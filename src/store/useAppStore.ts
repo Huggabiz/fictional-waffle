@@ -55,8 +55,11 @@ function saveToStorage(state: PersistedState): void {
 
 interface AppStore {
   activeSection: SectionId;
+  /** Id of the recipe currently shown in the detail modal. In-memory only. */
+  viewingRecipeId: string | null;
   persisted: PersistedState;
   setActiveSection: (id: SectionId) => void;
+  setViewingRecipeId: (id: string | null) => void;
   setProfile: (next: Profile) => void;
   setRecipes: (next: Recipe[]) => void;
   setPlans: (next: MealPlan[]) => void;
@@ -67,9 +70,12 @@ interface AppStore {
 
 export const useAppStore = create<AppStore>((set) => ({
   activeSection: 'explore',
+  viewingRecipeId: null,
   persisted: loadFromStorage(),
 
   setActiveSection: (id) => set({ activeSection: id }),
+
+  setViewingRecipeId: (id) => set({ viewingRecipeId: id }),
 
   setProfile: (next) =>
     set((s) => {

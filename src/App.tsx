@@ -1,5 +1,6 @@
 import { useAppStore } from './store/useAppStore';
 import { Nav } from './components/Nav';
+import { RecipeDetailModal } from './components/RecipeDetailModal';
 import { UserMenu } from './components/UserMenu';
 import { VersionBadge } from './components/VersionBadge';
 import { ProfileSection } from './sections/ProfileSection';
@@ -44,6 +45,7 @@ export function App() {
         <Nav />
         <main className="app__main">{renderSection(active)}</main>
       </div>
+      <RecipeDetailModal />
     </div>
   );
 }
