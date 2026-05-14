@@ -65,7 +65,16 @@ interface AppStore {
   setPlans: (next: MealPlan[]) => void;
   setActivePlanId: (id: string | null) => void;
   toggleCookbook: (recipeId: string) => void;
+  /** Create a new plan, persist it, and make it the active plan. Returns the new id. */
+  createPlan: (name?: string) => string;
+  /** Update a plan by id with a pure updater function (immutable). */
+  updatePlan: (planId: string, updater: (plan: MealPlan) => MealPlan) => void;
   resetAll: () => void;
+}
+
+function newPlanId(): string {
+  // Local-only ids — cheap, unique enough for a single-user app.
+  return `plan_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -112,6 +121,36 @@ export const useAppStore = create<AppStore>((set) => ({
         ? s.persisted.cookbookIds.filter((id) => id !== recipeId)
         : [...s.persisted.cookbookIds, recipeId];
       const persisted = { ...s.persisted, cookbookIds };
+      saveToStorage(persisted);
+      return { persisted };
+    }),
+
+  createPlan: (name) => {
+    const id = newPlanId();
+    set((s) => {
+      const plan: MealPlan = {
+        id,
+        name: name ?? 'Dinner',
+        serveAt: null,
+        entries: [],
+      };
+      const persisted = {
+        ...s.persisted,
+        plans: [...s.persisted.plans, plan],
+        activePlanId: id,
+      };
+      saveToStorage(persisted);
+      return { persisted };
+    });
+    return id;
+  },
+
+  updatePlan: (planId, updater) =>
+    set((s) => {
+      const plans = s.persisted.plans.map((p) =>
+        p.id === planId ? updater(p) : p,
+      );
+      const persisted = { ...s.persisted, plans };
       saveToStorage(persisted);
       return { persisted };
     }),

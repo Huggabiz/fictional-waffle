@@ -24,6 +24,15 @@
   max-width: 64ch;
 }
 
+.section__sub-title {
+  margin: var(--space-3) 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
 .section__body {
   display: flex;
   flex-direction: column;

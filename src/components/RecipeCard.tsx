@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Recipe } from '../types';
 import { useAppStore } from '../store/useAppStore';
 import { criticalPathSeconds, formatDuration } from '../lib/recipeMetrics';
@@ -5,14 +6,32 @@ import './RecipeCard.css';
 
 interface RecipeCardProps {
   recipe: Recipe;
+  /** Override the default cookbook toggle in the card footer (e.g. an
+   *  "Add to plan" button when shown inside the Planner). */
+  footer?: ReactNode;
 }
 
-export function RecipeCard({ recipe }: RecipeCardProps) {
+export function RecipeCard({ recipe, footer }: RecipeCardProps) {
   const inCookbook = useAppStore((s) => s.persisted.cookbookIds.includes(recipe.id));
   const toggleCookbook = useAppStore((s) => s.toggleCookbook);
   const setViewingRecipeId = useAppStore((s) => s.setViewingRecipeId);
 
   const total = criticalPathSeconds(recipe);
+
+  const defaultFooter = (
+    <button
+      type="button"
+      className={
+        inCookbook
+          ? 'recipe-card__toggle recipe-card__toggle--saved'
+          : 'recipe-card__toggle'
+      }
+      onClick={() => toggleCookbook(recipe.id)}
+      aria-pressed={inCookbook}
+    >
+      {inCookbook ? '✓ In cookbook' : '+ Add to cookbook'}
+    </button>
+  );
 
   return (
     <article className="recipe-card">
@@ -36,20 +55,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
         </div>
         {recipe.notes && <p className="recipe-card__notes">{recipe.notes}</p>}
       </button>
-      <div className="recipe-card__actions">
-        <button
-          type="button"
-          className={
-            inCookbook
-              ? 'recipe-card__toggle recipe-card__toggle--saved'
-              : 'recipe-card__toggle'
-          }
-          onClick={() => toggleCookbook(recipe.id)}
-          aria-pressed={inCookbook}
-        >
-          {inCookbook ? '✓ In cookbook' : '+ Add to cookbook'}
-        </button>
-      </div>
+      <div className="recipe-card__actions">{footer ?? defaultFooter}</div>
     </article>
   );
 }
