@@ -1,0 +1,42 @@
+name: Release to main
+
+# On push to a claude/** feature branch, fast-forward main to that commit
+# and then dispatch the Pages deploy workflow.
+#
+# Why split from the deploy workflow:
+# The github-pages environment is locked to deployments from main. The deploy
+# job's environment check looks at github.ref, so it must run in a workflow
+# that was triggered ON main — not one triggered by the claude/** push, even
+# if that workflow checks main out.
+#
+# Why workflow_dispatch (not relying on push:main to trigger deploy):
+# Pushes performed by GITHUB_TOKEN do not trigger other workflows. workflow_dispatch
+# and repository_dispatch are the documented exceptions, so we use the former to
+# kick off the deploy after the fast-forward.
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release-to-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fast-forward main to ${{ github.ref_name }}
+        # Non-force push: creates main if it doesn't exist, fast-forwards if
+        # it does, and FAILS LOUDLY if main has diverged — rather than
+        # silently overwriting unrelated work on main.
+        run: git push origin HEAD:refs/heads/main
+      - name: Dispatch Pages deploy on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main
