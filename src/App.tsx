@@ -1,5 +1,6 @@
 import { useAppStore } from './store/useAppStore';
 import { Nav } from './components/Nav';
+import { UserMenu } from './components/UserMenu';
 import { VersionBadge } from './components/VersionBadge';
 import { ProfileSection } from './sections/ProfileSection';
 import { LibrarySection } from './sections/LibrarySection';
@@ -31,7 +32,10 @@ export function App() {
           <img src="./waffle.svg" alt="" className="app__logo" />
           <span className="app__title">Fictional Waffle</span>
         </div>
-        <VersionBadge />
+        <div className="app__toolbar-right">
+          <VersionBadge />
+          <UserMenu />
+        </div>
       </header>
       <div className="app__body">
         <Nav />

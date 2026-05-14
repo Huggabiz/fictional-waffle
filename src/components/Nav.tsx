@@ -8,8 +8,9 @@ interface NavItem {
   hint: string;
 }
 
+// Profile lives in the top-right user menu (Office-365 style), not here, so
+// the side nav stays focused on the cooking flow.
 const NAV_ITEMS: NavItem[] = [
-  { id: 'profile', label: 'Profile', hint: 'Your proficiency & units' },
   { id: 'library', label: 'Library', hint: 'Recipes' },
   { id: 'plan', label: 'Plan', hint: 'Pick recipes & serve time' },
   { id: 'kitchen', label: 'Kitchen', hint: 'Cook along the timeline' },
