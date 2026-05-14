@@ -1,22 +1,23 @@
 import { useAppStore } from '../store/useAppStore';
 import './Section.css';
 
-export function LibrarySection() {
+export function ExploreSection() {
   const recipes = useAppStore((s) => s.persisted.recipes);
 
   return (
     <section className="section">
       <header className="section__header">
-        <h1 className="section__title">Library</h1>
+        <h1 className="section__title">Explore</h1>
         <p className="section__subtitle">
-          Recipes are stored as task graphs &mdash; nodes are prep / active / passive /
-          rest steps, edges are dependencies. The library is empty until we add the
-          authoring UI.
+          Browse the recipe catalogue. Tap a recipe to add it to your cookbook,
+          then plan a meal around it.
         </p>
       </header>
       <div className="section__body">
         {recipes.length === 0 ? (
-          <p className="section__placeholder">No recipes yet.</p>
+          <p className="section__placeholder">
+            Catalogue is empty. Seed recipes arrive in the next slice.
+          </p>
         ) : (
           <ul className="recipe-list">
             {recipes.map((r) => (

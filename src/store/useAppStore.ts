@@ -25,7 +25,9 @@ function defaultPersisted(): PersistedState {
     schemaVersion: SCHEMA_VERSION,
     profile: defaultProfile(),
     recipes: [],
+    cookbookIds: [],
     plans: [],
+    activePlanId: null,
   };
 }
 
@@ -58,11 +60,13 @@ interface AppStore {
   setProfile: (next: Profile) => void;
   setRecipes: (next: Recipe[]) => void;
   setPlans: (next: MealPlan[]) => void;
+  setActivePlanId: (id: string | null) => void;
+  toggleCookbook: (recipeId: string) => void;
   resetAll: () => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  activeSection: 'plan',
+  activeSection: 'explore',
   persisted: loadFromStorage(),
 
   setActiveSection: (id) => set({ activeSection: id }),
@@ -84,6 +88,24 @@ export const useAppStore = create<AppStore>((set) => ({
   setPlans: (next) =>
     set((s) => {
       const persisted = { ...s.persisted, plans: next };
+      saveToStorage(persisted);
+      return { persisted };
+    }),
+
+  setActivePlanId: (id) =>
+    set((s) => {
+      const persisted = { ...s.persisted, activePlanId: id };
+      saveToStorage(persisted);
+      return { persisted };
+    }),
+
+  toggleCookbook: (recipeId) =>
+    set((s) => {
+      const has = s.persisted.cookbookIds.includes(recipeId);
+      const cookbookIds = has
+        ? s.persisted.cookbookIds.filter((id) => id !== recipeId)
+        : [...s.persisted.cookbookIds, recipeId];
+      const persisted = { ...s.persisted, cookbookIds };
       saveToStorage(persisted);
       return { persisted };
     }),

@@ -3,9 +3,10 @@ import { Nav } from './components/Nav';
 import { UserMenu } from './components/UserMenu';
 import { VersionBadge } from './components/VersionBadge';
 import { ProfileSection } from './sections/ProfileSection';
-import { LibrarySection } from './sections/LibrarySection';
-import { PlanSection } from './sections/PlanSection';
-import { KitchenSection } from './sections/KitchenSection';
+import { ExploreSection } from './sections/ExploreSection';
+import { CookbookSection } from './sections/CookbookSection';
+import { PlannerSection } from './sections/PlannerSection';
+import { CookSection } from './sections/CookSection';
 import type { SectionId } from './types';
 import './App.css';
 
@@ -13,12 +14,14 @@ function renderSection(id: SectionId) {
   switch (id) {
     case 'profile':
       return <ProfileSection />;
-    case 'library':
-      return <LibrarySection />;
-    case 'plan':
-      return <PlanSection />;
-    case 'kitchen':
-      return <KitchenSection />;
+    case 'explore':
+      return <ExploreSection />;
+    case 'cookbook':
+      return <CookbookSection />;
+    case 'planner':
+      return <PlannerSection />;
+    case 'cook':
+      return <CookSection />;
   }
 }
 

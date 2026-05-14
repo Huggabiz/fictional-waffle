@@ -9,11 +9,12 @@ interface NavItem {
 }
 
 // Profile lives in the top-right user menu (Office-365 style), not here, so
-// the side nav stays focused on the cooking flow.
+// the side nav stays focused on the cooking flow: discover → save → compose → cook.
 const NAV_ITEMS: NavItem[] = [
-  { id: 'library', label: 'Library', hint: 'Recipes' },
-  { id: 'plan', label: 'Plan', hint: 'Pick recipes & serve time' },
-  { id: 'kitchen', label: 'Kitchen', hint: 'Cook along the timeline' },
+  { id: 'explore', label: 'Explore', hint: 'Browse the catalogue' },
+  { id: 'cookbook', label: 'Cookbook', hint: 'Recipes you saved' },
+  { id: 'planner', label: 'Planner', hint: 'Compose a meal' },
+  { id: 'cook', label: 'Cook', hint: 'Live timeline' },
 ];
 
 export function Nav() {

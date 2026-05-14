@@ -4,7 +4,7 @@
 // all four: the type, the factory, any import/export builders, and the
 // normaliseShape migration. Miss one and stale data crashes the app.
 
-export type SectionId = 'profile' | 'library' | 'plan' | 'kitchen';
+export type SectionId = 'profile' | 'explore' | 'cookbook' | 'planner' | 'cook';
 
 export type ProficiencyLevel = 'novice' | 'enthusiast' | 'chef' | 'custom';
 
@@ -30,10 +30,26 @@ export interface RecipeTask {
   dependsOn: string[];
 }
 
+export interface RecipeIngredient {
+  id: string;
+  label: string;
+  /** Numeric quantity. Use 0 for "to taste" / "a pinch". */
+  quantity: number;
+  /** Display unit; free text so cuisines aren't boxed in (g, ml, tbsp, cloves, …). */
+  unit: string;
+  notes?: string;
+}
+
+/** Where a recipe comes from. Builtin recipes are constants in code and can't
+ *  be edited or deleted; user recipes are persisted and editable. */
+export type RecipeSource = 'builtin' | 'user';
+
 export interface Recipe {
   id: string;
   title: string;
+  source: RecipeSource;
   servings: number;
+  ingredients: RecipeIngredient[];
   tasks: RecipeTask[];
   /** Optional notes shown above the timeline. */
   notes?: string;
@@ -57,6 +73,11 @@ export interface MealPlan {
 export interface PersistedState {
   schemaVersion: number;
   profile: Profile;
+  /** User-authored recipes only. Built-in seeds live in code and are merged in at read time. */
   recipes: Recipe[];
+  /** Ids of recipes (builtin or user) the user has added to their cookbook. */
+  cookbookIds: string[];
   plans: MealPlan[];
+  /** Id of the plan currently being edited / cooked. null = none yet. */
+  activePlanId: string | null;
 }

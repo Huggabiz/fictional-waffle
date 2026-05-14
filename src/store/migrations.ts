@@ -5,11 +5,13 @@ import type {
   Profile,
   ProficiencyLevel,
   Recipe,
+  RecipeIngredient,
+  RecipeSource,
   RecipeTask,
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // The safety net: runs on every load regardless of version, fills in any
 // missing fields with sane defaults. New domain fields go here too — that's
@@ -31,6 +33,10 @@ function asArray<T>(v: unknown, mapItem: (item: unknown) => T | null): T[] {
     if (mapped !== null) out.push(mapped);
   }
   return out;
+}
+
+function asStringArray(v: unknown): string[] {
+  return asArray(v, (x) => (typeof x === 'string' ? x : null));
 }
 
 const PROFICIENCY_VALUES: ReadonlySet<ProficiencyLevel> = new Set([
@@ -59,6 +65,10 @@ function asTaskKind(v: unknown): TaskKind {
     : 'prep';
 }
 
+function asRecipeSource(v: unknown): RecipeSource {
+  return v === 'builtin' ? 'builtin' : 'user';
+}
+
 function normaliseProfile(v: unknown): Profile {
   const o = (v ?? {}) as Record<string, unknown>;
   return {
@@ -80,7 +90,22 @@ function normaliseTask(v: unknown): RecipeTask | null {
     label: asString(o.label, 'Untitled step'),
     kind: asTaskKind(o.kind),
     baselineSeconds: asNumber(o.baselineSeconds, 60),
-    dependsOn: asArray(o.dependsOn, (x) => (typeof x === 'string' ? x : null)),
+    dependsOn: asStringArray(o.dependsOn),
+  };
+}
+
+function normaliseIngredient(v: unknown): RecipeIngredient | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const id = asString(o.id, '');
+  if (!id) return null;
+  const notes = typeof o.notes === 'string' ? o.notes : undefined;
+  return {
+    id,
+    label: asString(o.label, 'Untitled ingredient'),
+    quantity: asNumber(o.quantity, 0),
+    unit: asString(o.unit, ''),
+    ...(notes ? { notes } : {}),
   };
 }
 
@@ -93,7 +118,9 @@ function normaliseRecipe(v: unknown): Recipe | null {
   return {
     id,
     title: asString(o.title, 'Untitled recipe'),
+    source: asRecipeSource(o.source),
     servings: asNumber(o.servings, 2),
+    ingredients: asArray(o.ingredients, normaliseIngredient),
     tasks: asArray(o.tasks, normaliseTask),
     ...(notes ? { notes } : {}),
   };
@@ -122,10 +149,14 @@ function normalisePlan(v: unknown): MealPlan | null {
 
 export function normaliseShape(raw: unknown): PersistedState {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const activePlanId =
+    typeof o.activePlanId === 'string' ? o.activePlanId : null;
   return {
     schemaVersion: SCHEMA_VERSION,
     profile: normaliseProfile(o.profile),
     recipes: asArray(o.recipes, normaliseRecipe),
+    cookbookIds: asStringArray(o.cookbookIds),
     plans: asArray(o.plans, normalisePlan),
+    activePlanId,
   };
 }

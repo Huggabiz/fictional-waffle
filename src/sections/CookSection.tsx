@@ -1,14 +1,14 @@
 import './Section.css';
 
-export function KitchenSection() {
+export function CookSection() {
   return (
     <section className="section">
       <header className="section__header">
-        <h1 className="section__title">Kitchen</h1>
+        <h1 className="section__title">Cook</h1>
         <p className="section__subtitle">
           Live cooking view. The timeline creeps left-to-right toward your serve
-          time, splits where tasks run in parallel, and re-projects when you tell it
-          you&rsquo;re behind.
+          time, splits where tasks run in parallel, and re-projects when you tell
+          it you&rsquo;re behind.
         </p>
       </header>
       <div className="section__body">
