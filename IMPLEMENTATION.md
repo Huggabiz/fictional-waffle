@@ -29,6 +29,10 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [x] **Persistence** — localStorage with schema version + `normaliseShape` migration safety net. (v0.1.0)
 - [x] **CI/CD** — Actions: `claude/**` push fast-forwards `main`, then a separate `deploy.yml` builds and deploys Pages from `main` (so the `github-pages` environment's branch rule is satisfied). (v0.1.2)
 - [x] **Top-right user menu** — Office-365-style avatar chip + popover (name, proficiency, units, "Profile settings" link to the full section). Profile removed from side nav. (v0.1.3)
+- [x] **Section restructure** — Library → Explore, new Cookbook section, Plan → Planner, Kitchen → Cook. New domain fields: `Recipe.source`, `Recipe.ingredients`, `PersistedState.cookbookIds`, `PersistedState.activePlanId`. Schema migrated to v2. (v0.1.4)
+- [x] **Seed recipes + Explore + Cookbook + detail modal** — three built-in recipes, card grid in Explore and Cookbook, modal with ingredients + steps (coloured by kind). `useAllRecipes()` merges seeds with user recipes. Pure `criticalPathSeconds()` helper. (v0.1.5)
+- [x] **Planner v0** — editable plan name and serve time, entry list with per-entry scale and remove, "Add from your cookbook" picker grid. Crude earliest-start readout (longest single critical path) until the real scheduler lands. (v0.1.6)
+- [x] **Profile editor** — display name, units radio, proficiency segmented control mapped to speed multipliers, "10-minute prep takes ~Xm" preview. (v0.1.7)
 
 ## In progress
 
@@ -36,50 +40,34 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 
 ## Next up (rough order)
 
-### Section model restructure (v0.1.4)
-- [ ] Rename "Library" section → **Explore**.
-- [ ] Add new **Cookbook** section (the user's saved recipes — initially empty).
-- [ ] Rename "Plan" section → **Planner**.
-- [ ] Rename "Kitchen" section → **Cook**.
-- [ ] Side nav order: Explore · Cookbook · Planner · Cook.
-- [ ] Domain types: `Recipe` gains a `source: 'builtin' | 'user'` field; persisted state gains `cookbookIds: string[]` (set of recipe ids the user has added to their cookbook). _Four-place rule._
-- [ ] Explore card action: "Add to cookbook" toggles `cookbookIds`.
-- [ ] Cookbook empty state: "Nothing here yet — head to Explore to add recipes."
-
 ### Profile
-- [ ] Editable profile inside the Profile section (display name, proficiency preset, units).
-- [ ] Speed multiplier preview: "at your speed, a 10-minute prep is ~Xm".
 - [ ] **Calibration recipe** — a small fixed recipe the user cooks; we measure their actual time and set `speedMultiplier` from it (proficiency → `custom`).
 - [ ] Multiple profiles (household members), switchable from the top-right popover.
 - [ ] Reset / clear-all-data action (already in store as `resetAll`; needs a confirmed UI affordance).
 
 ### Explore
-- [ ] Card grid of available recipes with search/filter.
-- [ ] Recipe detail view: ingredients column + task DAG visualisation.
-- [ ] Built-in seed recipes (3–5) so Explore is non-empty on first run.
-- [ ] "Add to cookbook" / "Remove from cookbook" toggle on each card.
+- [ ] Search / filter the catalogue.
+- [ ] Task DAG visualisation in the detail modal (replace the step list).
 - [ ] JSON import: drop a recipe JSON into Explore to make it available.
 
 ### Cookbook
-- [ ] List of recipes the user has added (filtered subset of Explore + any user-authored).
 - [ ] Recipe authoring: add/edit/remove tasks, set kind (prep/active/passive/rest), duration, dependencies.
-- [ ] Recipe duplication.
+- [ ] Duplicate a seed recipe to make it editable as a user recipe.
 - [ ] JSON export per recipe and whole cookbook (round-trips through `normaliseShape`).
-- [ ] "Add to current plan" action.
 - [ ] Servings scaling on the recipe (separate from per-plan scaling).
 
 ### Planner
-- [ ] Plan picker: select recipes from cookbook, set per-recipe scale.
-- [ ] Serve time picker (date + time, plus "tonight at 7" / "in 90 minutes" presets).
 - [ ] **Scheduler** (pure module, no React/store imports):
   - merges multiple recipe DAGs into one timeline,
   - respects the single-cook constraint (no two `active` tasks overlapping),
   - front-loads non-critical prep so the cook's idle time during `passive` tasks is used,
   - applies the active profile's `speedMultiplier` to `prep` durations only.
 - [ ] Plan timeline preview (read-only SVG, left-to-right, ending at serve time).
-- [ ] Save / load named plans.
+- [ ] Save / load multiple named plans (currently one active plan at a time).
+- [ ] Serve-time presets ("tonight at 7" / "in 90 minutes").
 
 ### Cook
+- [ ] _(nothing happens here yet — drives off the Planner's scheduler output)._
 - [ ] Live timeline view (SVG, time-scaled, with a moving now-indicator).
 - [ ] "Start cook" action that anchors `now` to the schedule.
 - [ ] Per-task "done" tap → marks complete and re-projects downstream.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import type { ProficiencyLevel } from '../types';
+import { proficiencyLabel } from '../lib/proficiency';
 import './UserMenu.css';
 
 function initialsFor(name: string): string {
@@ -8,19 +8,6 @@ function initialsFor(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
-
-function proficiencyLabel(level: ProficiencyLevel): string {
-  switch (level) {
-    case 'novice':
-      return 'Novice';
-    case 'enthusiast':
-      return 'Enthusiast';
-    case 'chef':
-      return 'Chef';
-    case 'custom':
-      return 'Calibrated';
-  }
 }
 
 export function UserMenu() {
