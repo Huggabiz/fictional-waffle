@@ -11,7 +11,10 @@ import type {
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
+
+/** Fallback serving count when nothing better is known. */
+const DEFAULT_SERVINGS = 2;
 
 // The safety net: runs on every load regardless of version, fills in any
 // missing fields with sane defaults. New domain fields go here too — that's
@@ -77,6 +80,7 @@ function normaliseProfile(v: unknown): Profile {
     proficiency: asProficiency(o.proficiency),
     speedMultiplier: asNumber(o.speedMultiplier, 1),
     units: o.units === 'imperial' ? 'imperial' : 'metric',
+    defaultServings: asNumber(o.defaultServings, DEFAULT_SERVINGS),
   };
 }
 
@@ -131,7 +135,9 @@ function normalisePlanEntry(v: unknown): MealPlanEntry | null {
   const o = v as Record<string, unknown>;
   const recipeId = asString(o.recipeId, '');
   if (!recipeId) return null;
-  return { recipeId, scale: asNumber(o.scale, 1) };
+  // schema v2 stored a `scale` multiplier; v3 stores absolute `servings`.
+  // Old payloads have no servings — fall back rather than guess from scale.
+  return { recipeId, servings: asNumber(o.servings, DEFAULT_SERVINGS) };
 }
 
 function normalisePlan(v: unknown): MealPlan | null {

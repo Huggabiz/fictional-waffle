@@ -77,6 +77,26 @@ export function ProfileSection() {
             </div>
           </div>
 
+          <label className="profile-field">
+            <span className="profile-field__label">Default servings</span>
+            <input
+              className="profile-field__input profile-field__input--narrow"
+              type="number"
+              min={1}
+              max={50}
+              step={1}
+              value={profile.defaultServings}
+              onChange={(e) => {
+                const next = Math.round(Number(e.target.value));
+                if (!Number.isFinite(next) || next < 1) return;
+                patch({ defaultServings: next });
+              }}
+            />
+            <span className="profile-field__hint">
+              The serving count a recipe starts at when you add it to a plan.
+            </span>
+          </label>
+
           <div className="profile-field">
             <span className="profile-field__label">Proficiency</span>
             <div

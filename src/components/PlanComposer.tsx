@@ -122,7 +122,6 @@ export function PlanComposer({ plan, recipesById }: PlanComposerProps) {
                 </li>
               );
             }
-            const scaled = Math.round(recipe.servings * entry.scale);
             return (
               <li key={entry.recipeId} className="plan-composer__entry">
                 <button
@@ -136,21 +135,21 @@ export function PlanComposer({ plan, recipesById }: PlanComposerProps) {
                   {formatDuration(criticalPathSeconds(recipe))}
                 </span>
                 <label className="plan-composer__entry-scale">
-                  <span className="plan-composer__entry-scale-label">Scale</span>
+                  <span className="plan-composer__entry-scale-label">Servings</span>
                   <input
                     type="number"
-                    min={0.5}
-                    max={10}
-                    step={0.5}
-                    value={entry.scale}
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={entry.servings}
                     onChange={(e) => {
-                      const next = Number(e.target.value);
-                      if (!Number.isFinite(next) || next <= 0) return;
+                      const next = Math.round(Number(e.target.value));
+                      if (!Number.isFinite(next) || next < 1) return;
                       updatePlan(plan.id, (p) => ({
                         ...p,
                         entries: p.entries.map((x) =>
                           x.recipeId === entry.recipeId
-                            ? { ...x, scale: next }
+                            ? { ...x, servings: next }
                             : x,
                         ),
                       }));
@@ -158,7 +157,7 @@ export function PlanComposer({ plan, recipesById }: PlanComposerProps) {
                   />
                 </label>
                 <span className="plan-composer__entry-servings">
-                  {scaled} serving{scaled === 1 ? '' : 's'}
+                  recipe serves {recipe.servings}
                 </span>
                 <button
                   type="button"

@@ -16,6 +16,8 @@ export interface Profile {
   /** Multiplier applied to baseline prep durations. 1.0 = enthusiast baseline. */
   speedMultiplier: number;
   units: 'metric' | 'imperial';
+  /** Serving count a recipe defaults to when first added to a plan. */
+  defaultServings: number;
 }
 
 export type TaskKind = 'prep' | 'active' | 'passive' | 'rest';
@@ -57,8 +59,8 @@ export interface Recipe {
 
 export interface MealPlanEntry {
   recipeId: string;
-  /** User-chosen serving scale (1 = recipe default). */
-  scale: number;
+  /** Absolute serving count to cook for this dish in the plan. */
+  servings: number;
 }
 
 export interface MealPlan {

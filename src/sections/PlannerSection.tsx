@@ -11,6 +11,7 @@ export function PlannerSection() {
   const plans = useAppStore((s) => s.persisted.plans);
   const activePlanId = useAppStore((s) => s.persisted.activePlanId);
   const cookbookIds = useAppStore((s) => s.persisted.cookbookIds);
+  const profile = useAppStore((s) => s.persisted.profile);
   const setActiveSection = useAppStore((s) => s.setActiveSection);
   const createPlan = useAppStore((s) => s.createPlan);
   const updatePlan = useAppStore((s) => s.updatePlan);
@@ -125,7 +126,10 @@ export function PlannerSection() {
                                     ...p,
                                     entries: [
                                       ...p.entries,
-                                      { recipeId: r.id, scale: 1 },
+                                      {
+                                        recipeId: r.id,
+                                        servings: profile.defaultServings,
+                                      },
                                     ],
                                   },
                             )

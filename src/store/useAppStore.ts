@@ -17,6 +17,7 @@ function defaultProfile(): Profile {
     proficiency: 'enthusiast',
     speedMultiplier: 1,
     units: 'metric',
+    defaultServings: 2,
   };
 }
 
