@@ -94,7 +94,11 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
     let bandLeft = g.leftAxis;
     const recipes = laid.map((lane) => {
       const color = lineColor(lane.laneIndex);
-      const trackLeft = bandLeft + g.trackPad;
+      // With parallel tracks the left track's labels sit to its left and the
+      // rest to the right, so a left-hand label gutter is needed too.
+      const hasLeft = lane.subLaneCount > 1;
+      const leftGutter = hasLeft ? g.instrGutter : 0;
+      const trackLeft = bandLeft + leftGutter + g.trackPad;
       const subLaneX = (subLane: number) => trackLeft + subLane * g.subLaneGap;
       const trackRight = subLaneX(lane.subLaneCount - 1);
       const out = {
@@ -102,12 +106,16 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
         color,
         bandLeft,
         trackLeft,
-        instrX: trackRight + 24,
+        hasLeft,
         subLaneX,
+        leftLabelX: bandLeft + leftGutter - 14,
+        rightLabelX: trackRight + 24,
       };
       bandLeft +=
+        leftGutter +
         g.trackPad +
         (lane.subLaneCount - 1) * g.subLaneGap +
+        g.trackPad +
         g.instrGutter;
       return out;
     });
@@ -291,6 +299,12 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                     lines.length > 1
                       ? `${-(lines.length - 1) * 0.62}em`
                       : '0';
+                  // The left-most track labels to its left; everything else
+                  // to the right of the tracks.
+                  const onLeft = recipe.hasLeft && task.subLane === 0;
+                  const labelX = onLeft
+                    ? recipe.leftLabelX
+                    : recipe.rightLabelX;
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
                       {task.major ? (
@@ -305,11 +319,16 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                       ) : (
                         <circle cx={x} cy={y} r={4.5} fill={recipe.color} />
                       )}
-                      <text x={recipe.instrX} y={y} dominantBaseline="middle">
+                      <text
+                        x={labelX}
+                        y={y}
+                        textAnchor={onLeft ? 'end' : 'start'}
+                        dominantBaseline="middle"
+                      >
                         {lines.map((line, i) => (
                           <tspan
                             key={i}
-                            x={recipe.instrX}
+                            x={labelX}
                             dy={i === 0 ? firstDy : '1.25em'}
                             className={`tube__ln tube__ln--${line.kind}`}
                             fill={line.kind === 'title' ? recipe.color : undefined}
