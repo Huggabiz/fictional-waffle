@@ -65,13 +65,23 @@ export function CookSection() {
     [schedule],
   );
 
-  // Effective "now": the clock in auto mode (frozen while paused), or the
-  // current manual step's position when stepping through by hand.
+  // Effective "now": the clock in auto mode (frozen while paused). In manual
+  // mode it still moves with the clock — so the cook sees the time the step
+  // should take — but clamps at the end of the step's window and waits there
+  // for Next, so the recipe never gets ahead of the cook.
   const effectiveNow = useMemo(() => {
     if (!started || startMs === null) return realNow;
     if (!autoAdvance) {
       if (manualStep >= handsOn.length) return serveMs ?? realNow;
-      return startMs + handsOn[manualStep].startOffset * 1000;
+      const step = handsOn[manualStep];
+      const stepStart = activePlan?.stepStartedAt
+        ? Date.parse(activePlan.stepStartedAt)
+        : realNow;
+      const elapsed = Math.min(
+        Math.max(0, (realNow - stepStart) / 1000),
+        step.duration,
+      );
+      return startMs + (step.startOffset + elapsed) * 1000;
     }
     if (pausedAt) {
       const p = Date.parse(pausedAt);
@@ -87,6 +97,7 @@ export function CookSection() {
     handsOn,
     pausedAt,
     realNow,
+    activePlan,
   ]);
 
   const windows: TaskWindow[] = useMemo(() => {
@@ -105,11 +116,16 @@ export function CookSection() {
     if (!autoAdvance) {
       if (manualStep >= handsOn.length) return { phase: 'done' as const };
       const task = handsOn[manualStep];
+      const stepStart = activePlan?.stepStartedAt
+        ? Date.parse(activePlan.stepStartedAt)
+        : realNow;
+      const elapsed = Math.max(0, (realNow - stepStart) / 1000);
       return {
         phase: 'manual' as const,
         task,
         step: manualStep + 1,
         steps: handsOn.length,
+        leftSec: task.duration - elapsed,
       };
     }
     if (effectiveNow < startMs) {
@@ -160,6 +176,8 @@ export function CookSection() {
     startMs,
     serveMs,
     windows,
+    activePlan,
+    realNow,
   ]);
 
   // --- Empty states (after all hooks — CLAUDE.md: hooks before early returns) ---
@@ -195,6 +213,8 @@ export function CookSection() {
       startedAt: nowIso(),
       pausedAt: null,
       manualStep: 0,
+      stepStartedAt: nowIso(),
+      actuals: [],
     }));
   const stopCook = () =>
     updatePlan(planId, (p) => ({
@@ -202,6 +222,8 @@ export function CookSection() {
       startedAt: null,
       pausedAt: null,
       manualStep: 0,
+      stepStartedAt: null,
+      actuals: [],
     }));
   const pauseCook = () =>
     updatePlan(planId, (p) => ({ ...p, pausedAt: nowIso() }));
@@ -215,11 +237,43 @@ export function CookSection() {
         pausedAt: null,
       };
     });
+  // Advancing records how long the step just finished actually took, so the
+  // cook's pace at that task can inform their proficiency later.
   const goNext = () =>
-    updatePlan(planId, (p) => ({
-      ...p,
-      manualStep: Math.min((p.manualStep ?? 0) + 1, handsOn.length),
-    }));
+    updatePlan(planId, (p) => {
+      const step = p.manualStep ?? 0;
+      if (step >= handsOn.length) return p;
+      const done = handsOn[step];
+      const startedAtMs = p.stepStartedAt
+        ? Date.parse(p.stepStartedAt)
+        : Date.now();
+      const actual = {
+        recipeId: done.recipeId,
+        taskId: done.taskId,
+        expectedSeconds: Math.round(done.duration),
+        actualSeconds: Math.max(
+          0,
+          Math.round((Date.now() - startedAtMs) / 1000),
+        ),
+      };
+      return {
+        ...p,
+        manualStep: Math.min(step + 1, handsOn.length),
+        stepStartedAt: nowIso(),
+        actuals: [...p.actuals, actual],
+      };
+    });
+  const goPrev = () =>
+    updatePlan(planId, (p) => {
+      const step = p.manualStep ?? 0;
+      if (step <= 0) return p;
+      return {
+        ...p,
+        manualStep: step - 1,
+        stepStartedAt: nowIso(),
+        actuals: p.actuals.slice(0, -1),
+      };
+    });
 
   const setMode = (auto: boolean) => {
     if (auto === autoAdvance) return;
@@ -235,7 +289,12 @@ export function CookSection() {
           break;
         }
       }
-      updatePlan(planId, (p) => ({ ...p, manualStep: step, pausedAt: null }));
+      updatePlan(planId, (p) => ({
+        ...p,
+        manualStep: step,
+        pausedAt: null,
+        stepStartedAt: nowIso(),
+      }));
     }
   };
 
@@ -252,8 +311,6 @@ export function CookSection() {
         return `${q}${ing.unit ? `${ing.unit} ` : ''}${ing.label}`.trim();
       })
       .join(', ');
-
-  const showNext = !autoAdvance && started && current.phase === 'manual';
 
   return (
     <div className="cook">
@@ -334,17 +391,39 @@ export function CookSection() {
         )}
         {current.phase === 'manual' && (
           <div className="cook__bar-timer">
-            <div className="cook__bar-timer-value cook__bar-timer-value--est">
-              {formatCountdown(current.task.duration)}
+            <div
+              className={
+                current.leftSec >= 0
+                  ? 'cook__bar-timer-value'
+                  : 'cook__bar-timer-value cook__bar-timer-value--over'
+              }
+            >
+              {formatCountdown(Math.abs(current.leftSec))}
             </div>
-            <div className="cook__bar-timer-label">this step</div>
+            <div className="cook__bar-timer-label">
+              {current.leftSec >= 0 ? 'left' : 'over'}
+            </div>
           </div>
         )}
 
-        {showNext && (
-          <button type="button" className="cook__next" onClick={goNext}>
-            Next →
-          </button>
+        {!autoAdvance && started && (
+          <div className="cook__steps">
+            {manualStep > 0 && (
+              <button
+                type="button"
+                className="cook__prev"
+                onClick={goPrev}
+                aria-label="Back a step"
+              >
+                ← Prev
+              </button>
+            )}
+            {manualStep < handsOn.length && (
+              <button type="button" className="cook__next" onClick={goNext}>
+                Next →
+              </button>
+            )}
+          </div>
         )}
 
         <div className="cook__bar-controls">

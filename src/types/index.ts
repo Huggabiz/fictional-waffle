@@ -74,6 +74,17 @@ export interface MealPlanEntry {
   servings: number;
 }
 
+/** A record of how long a step actually took vs what was scheduled —
+ *  captured in manual mode, to inform the cook's proficiency over time. */
+export interface TaskActual {
+  recipeId: string;
+  taskId: string;
+  /** Scheduled duration shown to the cook, in seconds (its "significance"). */
+  expectedSeconds: number;
+  /** Wall-clock time the cook actually took, in seconds. */
+  actualSeconds: number;
+}
+
 export interface MealPlan {
   id: string;
   name: string;
@@ -87,6 +98,10 @@ export interface MealPlan {
   pausedAt: string | null;
   /** In manual advance mode, the index of the hands-on task you're on. */
   manualStep: number;
+  /** Manual mode: ISO timestamp the current step began (real time). */
+  stepStartedAt: string | null;
+  /** Actual vs expected times recorded for steps done in manual mode. */
+  actuals: TaskActual[];
 }
 
 /** Persisted app state. Bumped via SCHEMA_VERSION when shape changes. */

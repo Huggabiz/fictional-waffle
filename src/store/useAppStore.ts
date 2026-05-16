@@ -138,6 +138,8 @@ export const useAppStore = create<AppStore>((set) => ({
         startedAt: null,
         pausedAt: null,
         manualStep: 0,
+        stepStartedAt: null,
+        actuals: [],
       };
       const persisted = {
         ...s.persisted,

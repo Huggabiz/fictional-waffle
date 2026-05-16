@@ -8,10 +8,11 @@ import type {
   RecipeIngredient,
   RecipeSource,
   RecipeTask,
+  TaskActual,
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 /** Fallback serving count when nothing better is known. */
 const DEFAULT_SERVINGS = 2;
@@ -144,6 +145,20 @@ function normalisePlanEntry(v: unknown): MealPlanEntry | null {
   return { recipeId, servings: asNumber(o.servings, DEFAULT_SERVINGS) };
 }
 
+function normaliseActual(v: unknown): TaskActual | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const recipeId = asString(o.recipeId, '');
+  const taskId = asString(o.taskId, '');
+  if (!recipeId || !taskId) return null;
+  return {
+    recipeId,
+    taskId,
+    expectedSeconds: asNumber(o.expectedSeconds, 0),
+    actualSeconds: asNumber(o.actualSeconds, 0),
+  };
+}
+
 function normalisePlan(v: unknown): MealPlan | null {
   if (!v || typeof v !== 'object') return null;
   const o = v as Record<string, unknown>;
@@ -157,6 +172,8 @@ function normalisePlan(v: unknown): MealPlan | null {
     startedAt: typeof o.startedAt === 'string' ? o.startedAt : null,
     pausedAt: typeof o.pausedAt === 'string' ? o.pausedAt : null,
     manualStep: asNumber(o.manualStep, 0),
+    stepStartedAt: typeof o.stepStartedAt === 'string' ? o.stepStartedAt : null,
+    actuals: asArray(o.actuals, normaliseActual),
   };
 }
 
