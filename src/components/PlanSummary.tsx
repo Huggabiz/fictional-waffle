@@ -132,7 +132,12 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                     recipe.crossOf(dep.subLane),
                     view.mainOf(task.startOffset),
                     recipe.crossOf(task.subLane),
+                    view.mainOf(dep.startOffset),
+                    view.mainOf(task.endOffset),
                   ).map((p) => ({ x: p.main, y: p.cross }));
+                  const dashed =
+                    !occupiesCook(task.kind) ||
+                    task.startOffset - dep.endOffset > 60;
                   return [
                     <path
                       key={`${recipe.recipeId}:${depId}->${task.taskId}`}
@@ -142,6 +147,7 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                       strokeWidth={3}
                       strokeLinecap="round"
                       strokeLinejoin="round"
+                      strokeDasharray={dashed ? '1.5 7' : undefined}
                     />,
                   ];
                 }),

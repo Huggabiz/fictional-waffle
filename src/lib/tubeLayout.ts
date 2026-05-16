@@ -85,38 +85,50 @@ export interface Pt {
 
 /**
  * Points for a connector from one station to the next, in (main, cross)
- * coordinates — main is the time axis. A change of sub-lane leaves as a 45°
- * spur; the caller rounds the corners. `mainB` must be >= `mainA`.
+ * coordinates — main is the time axis. A change of sub-lane leaves the line
+ * as a 45° spur with a short straight run either side for rounded corners.
+ *
+ * Dependencies are often tight (one task ends exactly as the next starts),
+ * so there's no room between the stations for the spur. The connector is
+ * therefore centred on the midpoint and allowed to run back into the
+ * source segment and forward into the target segment — it's drawn UNDER the
+ * track, so the overlap reads as the line forking. `minMain`/`maxMain` bound
+ * how far it may borrow (the far ends of the two segments).
  */
 export function connectorPoints(
   mainA: number,
   crossA: number,
   mainB: number,
   crossB: number,
+  minMain: number,
+  maxMain: number,
 ): { main: number; cross: number }[] {
-  const dMain = mainB - mainA;
-  const dCross = crossB - crossA;
-  if (Math.abs(dCross) < 0.5) {
+  if (Math.abs(crossB - crossA) < 0.5) {
     return [
       { main: mainA, cross: crossA },
       { main: mainB, cross: crossB },
     ];
   }
-  const diag = Math.abs(dCross);
-  // Enough room along the time axis for a true 45° spur in the middle?
-  if (dMain >= diag + 6) {
-    const pre = (dMain - diag) / 2;
+  const diag = Math.abs(crossB - crossA);
+  const cornerRun = 14; // straight run each side, so corners can round
+  const mid = (mainA + mainB) / 2;
+  const halfSpan = diag / 2 + cornerRun;
+  const s = Math.max(minMain, mid - halfSpan);
+  const e = Math.min(maxMain, mid + halfSpan);
+  if (e - s < 4) {
     return [
       { main: mainA, cross: crossA },
-      { main: mainA + pre, cross: crossA },
-      { main: mainA + pre + diag, cross: crossB },
       { main: mainB, cross: crossB },
     ];
   }
-  // Too tight — a single straight spur.
+  const available = e - s;
+  const diagLen = Math.min(diag, Math.max(2, available - 8));
+  const straight = (available - diagLen) / 2;
   return [
-    { main: mainA, cross: crossA },
-    { main: mainB, cross: crossB },
+    { main: s, cross: crossA },
+    { main: s + straight, cross: crossA },
+    { main: s + straight + diagLen, cross: crossB },
+    { main: e, cross: crossB },
   ];
 }
 

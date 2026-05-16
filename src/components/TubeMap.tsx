@@ -233,8 +233,15 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                       recipe.subLaneX(dep.subLane),
                       stationY(task.startOffset),
                       recipe.subLaneX(task.subLane),
+                      stationY(dep.startOffset),
+                      stationY(task.endOffset),
                     ).map((p) => ({ x: p.cross, y: p.main }));
-                    const dashed = task.startOffset - dep.endOffset > 60;
+                    // The branch into a hands-free task (or across an idle
+                    // gap) is dashed — that's the part of the split you walk
+                    // away from.
+                    const dashed =
+                      !occupiesCook(task.kind) ||
+                      task.startOffset - dep.endOffset > 60;
                     return [
                       <path
                         key={`${recipe.recipeId}:${depId}->${task.taskId}`}
