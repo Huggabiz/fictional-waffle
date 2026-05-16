@@ -1,30 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useAllRecipes } from '../store/selectors';
-import { buildSchedule } from '../lib/scheduler';
+import { usePlanSchedule } from '../store/selectors';
 import { formatDuration } from '../lib/recipeMetrics';
 import { formatServeAt } from '../lib/planTime';
-import { Timeline } from '../components/Timeline';
-import type { TaskKind } from '../types';
+import { TubeMap } from '../components/TubeMap';
 import './Section.css';
 import './CookSection.css';
 
 const TICK_MS = 30_000;
 
-const KIND_LEGEND: { kind: TaskKind; label: string }[] = [
-  { kind: 'prep', label: 'Prep' },
-  { kind: 'active', label: 'Active cooking' },
-  { kind: 'passive', label: 'Passive (hands-free)' },
-  { kind: 'rest', label: 'Rest' },
-];
-
 export function CookSection() {
   const plans = useAppStore((s) => s.persisted.plans);
   const activePlanId = useAppStore((s) => s.persisted.activePlanId);
-  const profile = useAppStore((s) => s.persisted.profile);
   const setActiveSection = useAppStore((s) => s.setActiveSection);
-  const allRecipes = useAllRecipes();
 
   // The now-line ticks; re-projection when the cook falls behind comes later.
   const [now, setNow] = useState(() => Date.now());
@@ -38,34 +27,7 @@ export function CookSection() {
     [plans, activePlanId],
   );
 
-  const recipesById = useMemo(
-    () => new Map(allRecipes.map((r) => [r.id, r])),
-    [allRecipes],
-  );
-
-  const schedule = useMemo(
-    () => (activePlan ? buildSchedule(activePlan, recipesById, profile) : null),
-    [activePlan, recipesById, profile],
-  );
-
-  const lanes = useMemo(() => {
-    if (!activePlan || !schedule) return [];
-    const cyclic = new Set(schedule.cyclicRecipeIds);
-    return activePlan.entries
-      .map((e) => recipesById.get(e.recipeId))
-      .filter(
-        (r): r is NonNullable<typeof r> => Boolean(r) && !cyclic.has(r!.id),
-      )
-      .map((r) => ({ recipeId: r.id, title: r.title }));
-  }, [activePlan, schedule, recipesById]);
-
-  const serveMs = activePlan?.serveAt
-    ? new Date(activePlan.serveAt).getTime()
-    : null;
-  const startMs =
-    serveMs !== null && schedule
-      ? serveMs - schedule.totalDuration * 1000
-      : null;
+  const { schedule, lanes, startMs, serveMs } = usePlanSchedule(activePlan);
 
   const conflictSeconds = schedule
     ? schedule.conflicts.reduce(
@@ -76,7 +38,8 @@ export function CookSection() {
 
   const status = useMemo(() => {
     if (startMs === null || serveMs === null) return null;
-    if (now < startMs) return `Starts in ${formatDuration((startMs - now) / 1000)}`;
+    if (now < startMs)
+      return `Starts in ${formatDuration((startMs - now) / 1000)}`;
     if (now > serveMs) return 'Serve time has passed';
     return 'Cook in progress';
   }, [now, startMs, serveMs]);
@@ -135,7 +98,9 @@ export function CookSection() {
         <div>
           <div className="cook-readout__label">Start cooking</div>
           <div className="cook-readout__value">
-            {startMs !== null ? formatServeAt(new Date(startMs).toISOString()) : '—'}
+            {startMs !== null
+              ? formatServeAt(new Date(startMs).toISOString())
+              : '—'}
           </div>
         </div>
         <div>
@@ -164,41 +129,37 @@ export function CookSection() {
       {schedule.cyclicRecipeIds.length > 0 && (
         <p className="cook-warning">
           {schedule.cyclicRecipeIds.length} recipe
-          {schedule.cyclicRecipeIds.length === 1 ? '' : 's'} skipped — their task
-          steps depend on each other in a loop.
+          {schedule.cyclicRecipeIds.length === 1 ? '' : 's'} skipped — their
+          task steps depend on each other in a loop.
         </p>
       )}
 
       {schedule.conflicts.length > 0 && (
         <p className="cook-warning">
-          Cook double-booked for ~{formatDuration(conflictSeconds)} total. v0
-          schedules every task as late as possible; interleaving prep into
-          hands-free gaps to clear these conflicts is the next step.
+          Cook double-booked for ~{formatDuration(conflictSeconds)} total. The
+          scheduler currently lays every task as late as possible; interleaving
+          prep into hands-free gaps to clear these clashes is the next step.
         </p>
       )}
 
-      <Timeline schedule={schedule} lanes={lanes} startMs={startMs} nowMs={now} />
-
-      <ul className="cook-legend">
-        {KIND_LEGEND.map((item) => (
-          <li key={item.kind} className="cook-legend__item">
-            <span className={`cook-legend__swatch cook-legend__swatch--${item.kind}`} />
-            {item.label}
-          </li>
-        ))}
-      </ul>
+      <TubeMap
+        schedule={schedule}
+        lanes={lanes}
+        startMs={startMs}
+        nowMs={now}
+      />
     </CookShell>
   );
 }
 
 function CookShell({ children }: { children: ReactNode }) {
   return (
-    <section className="section">
+    <section className="section section--wide">
       <header className="section__header">
         <h1 className="section__title">Cook</h1>
         <p className="section__subtitle">
-          Your plan as one merged timeline — dishes stacked as lanes, the
-          now-line creeping toward serve time.
+          Your plan as a tube map — each dish a line, each task a length of
+          track, each station an instruction. The now-line creeps toward serve.
         </p>
       </header>
       <div className="section__body">{children}</div>

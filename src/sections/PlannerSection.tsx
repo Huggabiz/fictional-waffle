@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { useAllRecipes } from '../store/selectors';
+import { useAllRecipes, usePlanSchedule } from '../store/selectors';
 import { PlanComposer } from '../components/PlanComposer';
+import { TubeMap } from '../components/TubeMap';
 import type { MealPlan } from '../types';
 import './Section.css';
 
@@ -23,13 +24,16 @@ export function PlannerSection() {
     [plans, activePlanId],
   );
 
+  const { schedule, lanes, startMs } = usePlanSchedule(activePlan);
+
   return (
-    <section className="section">
+    <section className="section section--wide">
       <header className="section__header">
         <h1 className="section__title">Planner</h1>
         <p className="section__subtitle">
           Pull a meal together from your cookbook recipes, then say when you
-          want to serve it.
+          want to serve it. The preview is the same tube map you&rsquo;ll cook
+          from.
         </p>
       </header>
 
@@ -68,15 +72,25 @@ export function PlannerSection() {
                 </button>
               </div>
             ) : (
-              <div className="planner-cook-cta">
-                <button
-                  type="button"
-                  className="empty-state__action"
-                  onClick={() => setActiveSection('cook')}
-                >
-                  Cook this plan →
-                </button>
-              </div>
+              <>
+                {schedule && schedule.tasks.length > 0 && (
+                  <TubeMap
+                    schedule={schedule}
+                    lanes={lanes}
+                    startMs={startMs}
+                    nowMs={Date.now()}
+                  />
+                )}
+                <div className="planner-cook-cta">
+                  <button
+                    type="button"
+                    className="empty-state__action"
+                    onClick={() => setActiveSection('cook')}
+                  >
+                    Cook this plan →
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}

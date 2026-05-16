@@ -21,6 +21,10 @@ export interface ScheduledTask {
   startOffset: number;
   /** Duration in seconds, after proficiency scaling. */
   duration: number;
+  /** Phase name, carried through for the tube-map's station styling. */
+  group?: string;
+  /** Recipe-local ids this task depends on — for drawing track connectors. */
+  dependsOn: string[];
 }
 
 /** A stretch of time where two or more cook-occupying tasks overlap. */
@@ -163,6 +167,8 @@ export function buildSchedule(
         label: task.label,
         kind: task.kind,
         duration: scaledDuration(task, profile),
+        dependsOn: task.dependsOn,
+        ...(task.group ? { group: task.group } : {}),
         leadStart,
       });
       if (leadStart > maxLead) maxLead = leadStart;

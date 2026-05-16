@@ -33,7 +33,11 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [x] **Seed recipes + Explore + Cookbook + detail modal** — three built-in recipes, card grid in Explore and Cookbook, modal with ingredients + steps (coloured by kind). `useAllRecipes()` merges seeds with user recipes. Pure `criticalPathSeconds()` helper. (v0.1.5)
 - [x] **Planner v0** — editable plan name and serve time, entry list with per-entry scale and remove, "Add from your cookbook" picker grid. Crude earliest-start readout (longest single critical path) until the real scheduler lands. (v0.1.6)
 - [x] **Profile editor** — display name, units radio, proficiency segmented control mapped to speed multipliers, "10-minute prep takes ~Xm" preview. (v0.1.7)
-- [x] **Scheduler v0 + Cook timeline** — pure `lib/scheduler.ts` merges the plan's recipe DAGs into one as-late-as-possible timeline (prep scaled by proficiency, cyclic recipes skipped, cook double-booking detected). Cook renders it as an SVG timeline (lane per dish, axis, serve marker, ticking now-line) with readout + conflict warnings. Planner gets a "Cook this plan" button. (v0.2.0)
+- [x] **Scheduler v0 + Cook timeline** — pure `lib/scheduler.ts` merges the plan's recipe DAGs into one as-late-as-possible timeline (prep scaled by proficiency, cyclic recipes skipped, cook double-booking detected). Planner gets a "Cook this plan" button. (v0.2.0)
+- [x] **Servings model** — plan entries store an absolute `servings` count (not a `scale` multiplier); Profile gains `defaultServings`. Schema v3. (v0.2.1)
+- [x] **Cookbook redesign** — recipes shown fully expanded (shared `RecipeView` component, also used by the Explore modal); per-recipe "Add to planner" / "Remove". (v0.2.2)
+- [x] **Planner as a meal-now composer** — time-of-day serve input (not datetime); the in-Planner cookbook picker removed (recipes are added from the Cookbook). (v0.2.3)
+- [x] **Cook tube-map** — the timeline is now a London-Underground-style tube map: each dish a coloured line, each task a length of track, each instruction a station (big interchange = phase change, small tick = sub-step). Hands-on track solid, hands-free dashed. Responsive: horizontal on wide screens, vertical on phones. Shared by Cook (live) and Planner (preview). `RecipeTask` gains `group`; seeds restructured with per-ingredient prep chains; new "Chunky vegetable soup" seed. Schema v4. (v0.3.0)
 
 ## In progress
 
@@ -52,28 +56,29 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [ ] JSON import: drop a recipe JSON into Explore to make it available.
 
 ### Cookbook
-- [ ] Recipe authoring: add/edit/remove tasks, set kind (prep/active/passive/rest), duration, dependencies.
+- [ ] Recipe authoring: add/edit/remove tasks, set kind, duration, dependencies, and `group`.
 - [ ] Duplicate a seed recipe to make it editable as a user recipe.
 - [ ] JSON export per recipe and whole cookbook (round-trips through `normaliseShape`).
-- [ ] Servings scaling on the recipe (separate from per-plan scaling).
+- [ ] Scale ingredient quantities to the planned serving count.
 
 ### Scheduler (the meaty one — v0 shipped, needs the constraint solver)
 - [x] v0: merge recipe DAGs, as-late-as-possible pass, prep scaled by proficiency, conflict *detection*. (v0.2.0)
 - [ ] **Resolve the single-cook constraint** — no two `prep`/`active` tasks overlap; interleave non-critical prep into `passive`/`rest` gaps instead of just flagging the clash.
-- [ ] Scale prep durations by the plan entry's serving `scale` (more servings ⇒ more chopping; passive time unchanged).
+- [ ] Scale prep durations by the entry's serving count (more servings ⇒ more chopping; passive time unchanged).
 - [ ] Unit tests for the scheduler (it's pure — easy to test in isolation).
 
 ### Planner
-- [ ] Plan timeline preview (reuse the Cook `Timeline` component, read-only).
+- [x] Plan timeline preview — shares the Cook `TubeMap`. (v0.3.0)
 - [ ] Save / load multiple named plans (currently one active plan at a time).
 - [ ] Serve-time presets ("tonight at 7" / "in 90 minutes").
 
 ### Cook
-- [x] Static merged timeline (SVG, lane per dish, ticking now-line). (v0.2.0)
+- [x] Merged timeline as a tube map (responsive horizontal/vertical, ticking now-line). (v0.3.0)
+- [ ] **Target ("should be here") ghost line** alongside the now-line, once per-task progress is tracked.
 - [ ] "Start cook" action that anchors `now` to the schedule.
 - [ ] Per-task "done" tap → marks complete and re-projects downstream.
 - [ ] "I'm here" / "I'm behind" re-anchor control → re-projects serve time forward.
-- [ ] Separate lanes for active vs passive so the cook can see when they're free.
+- [ ] Tube-map polish: smarter station-label placement to avoid overlap on dense lines.
 - [ ] Local notifications when a passive task is about to end / has ended.
 - [ ] Keep-screen-awake hint (Wake Lock API where supported).
 

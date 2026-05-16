@@ -30,6 +30,12 @@ export interface RecipeTask {
   baselineSeconds: number;
   /** Ids of tasks that must complete before this one can start. */
   dependsOn: string[];
+  /**
+   * Optional phase name (e.g. "Prep vegetables"). Tasks sharing a group are
+   * sub-steps of one phase: on the tube-map the first is a big interchange
+   * station, the rest are minor stops. Ungrouped tasks are their own phase.
+   */
+  group?: string;
 }
 
 export interface RecipeIngredient {

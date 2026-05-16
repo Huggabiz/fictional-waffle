@@ -11,7 +11,7 @@ import type {
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** Fallback serving count when nothing better is known. */
 const DEFAULT_SERVINGS = 2;
@@ -89,12 +89,14 @@ function normaliseTask(v: unknown): RecipeTask | null {
   const o = v as Record<string, unknown>;
   const id = asString(o.id, '');
   if (!id) return null;
+  const group = typeof o.group === 'string' && o.group ? o.group : undefined;
   return {
     id,
     label: asString(o.label, 'Untitled step'),
     kind: asTaskKind(o.kind),
     baselineSeconds: asNumber(o.baselineSeconds, 60),
     dependsOn: asStringArray(o.dependsOn),
+    ...(group ? { group } : {}),
   };
 }
 
