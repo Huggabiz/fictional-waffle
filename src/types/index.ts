@@ -77,6 +77,9 @@ export interface MealPlan {
   /** Target serve time as ISO timestamp. */
   serveAt: string | null;
   entries: MealPlanEntry[];
+  /** ISO timestamp the cook was started ("Start cook now"). null = not started;
+   *  when set, the Cook timeline is anchored to it rather than to serveAt. */
+  startedAt: string | null;
 }
 
 /** Persisted app state. Bumped via SCHEMA_VERSION when shape changes. */

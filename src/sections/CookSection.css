@@ -34,6 +34,50 @@
   color: var(--color-accent-strong);
 }
 
+.cook-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.cook-controls__state {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cook-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cook-btn:hover {
+  background: var(--color-surface-2);
+}
+
+.cook-btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: var(--color-accent);
+  font-size: 14px;
+}
+
+.cook-btn--primary:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.cook-btn--ghost {
+  color: var(--color-text-muted);
+}
+
 .cook-note {
   margin: 0;
   font-size: 13px;

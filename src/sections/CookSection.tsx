@@ -14,6 +14,7 @@ export function CookSection() {
   const plans = useAppStore((s) => s.persisted.plans);
   const activePlanId = useAppStore((s) => s.persisted.activePlanId);
   const setActiveSection = useAppStore((s) => s.setActiveSection);
+  const updatePlan = useAppStore((s) => s.updatePlan);
 
   // The now-line ticks; re-projection when the cook falls behind comes later.
   const [now, setNow] = useState(() => Date.now());
@@ -81,6 +82,13 @@ export function CookSection() {
     );
   }
 
+  const started = activePlan.startedAt !== null;
+  const planId = activePlan.id;
+  const startCook = () =>
+    updatePlan(planId, (p) => ({ ...p, startedAt: new Date().toISOString() }));
+  const stopCook = () =>
+    updatePlan(planId, (p) => ({ ...p, startedAt: null }));
+
   return (
     <CookShell>
       <div className="cook-readout">
@@ -99,7 +107,9 @@ export function CookSection() {
         <div>
           <div className="cook-readout__label">Serve</div>
           <div className="cook-readout__value">
-            {formatServeAt(activePlan.serveAt)}
+            {serveMs !== null
+              ? formatServeAt(new Date(serveMs).toISOString())
+              : 'Not set'}
           </div>
         </div>
         <div>
@@ -110,12 +120,40 @@ export function CookSection() {
         </div>
       </div>
 
+      <div className="cook-controls">
+        {started ? (
+          <>
+            <span className="cook-controls__state">
+              Cooking — started {formatServeAt(activePlan.startedAt)}
+            </span>
+            <button type="button" className="cook-btn" onClick={startCook}>
+              Restart
+            </button>
+            <button
+              type="button"
+              className="cook-btn cook-btn--ghost"
+              onClick={stopCook}
+            >
+              Stop
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="cook-btn cook-btn--primary"
+            onClick={startCook}
+          >
+            ▶ Start cook now
+          </button>
+        )}
+      </div>
+
       {status && <p className="cook-status">{status}</p>}
 
-      {activePlan.serveAt === null && (
+      {startMs === null && (
         <p className="cook-note">
-          No serve time set — the timeline below is relative. Set one in the
-          Planner to anchor it to the clock and show the now-line.
+          The timeline below is relative — set a serve time in the Planner, or
+          press &ldquo;Start cook now&rdquo; to anchor it to the clock.
         </p>
       )}
 

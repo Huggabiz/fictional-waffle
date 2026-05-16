@@ -134,6 +134,7 @@ export const useAppStore = create<AppStore>((set) => ({
         name: name ?? 'Dinner',
         serveAt: null,
         entries: [],
+        startedAt: null,
       };
       const persisted = {
         ...s.persisted,

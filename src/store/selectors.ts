@@ -59,12 +59,23 @@ export function usePlanSchedule(plan: MealPlan | undefined): PlanSchedule {
       .map((r) => ({ recipeId: r.id, title: r.title }));
   }, [plan, schedule, recipesById]);
 
-  const serveMs =
-    plan?.serveAt && !Number.isNaN(new Date(plan.serveAt).getTime())
-      ? new Date(plan.serveAt).getTime()
-      : null;
-  const startMs =
-    serveMs !== null && schedule ? serveMs - schedule.totalDuration * 1000 : null;
+  // Anchoring: once the cook has been started, the timeline runs from that
+  // moment (serve = started + total, like a GPS ETA). Otherwise it's pegged
+  // backward from the planned serve time. Unanchored if neither is set.
+  let startMs: number | null = null;
+  let serveMs: number | null = null;
+  if (plan && schedule) {
+    const total = schedule.totalDuration * 1000;
+    const started = plan.startedAt ? new Date(plan.startedAt).getTime() : NaN;
+    const serve = plan.serveAt ? new Date(plan.serveAt).getTime() : NaN;
+    if (!Number.isNaN(started)) {
+      startMs = started;
+      serveMs = started + total;
+    } else if (!Number.isNaN(serve)) {
+      serveMs = serve;
+      startMs = serve - total;
+    }
+  }
 
   return { schedule, lanes, startMs, serveMs };
 }

@@ -11,7 +11,7 @@ import type {
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 /** Fallback serving count when nothing better is known. */
 const DEFAULT_SERVINGS = 2;
@@ -153,6 +153,7 @@ function normalisePlan(v: unknown): MealPlan | null {
     name: asString(o.name, 'Untitled plan'),
     serveAt: typeof o.serveAt === 'string' ? o.serveAt : null,
     entries: asArray(o.entries, normalisePlanEntry),
+    startedAt: typeof o.startedAt === 'string' ? o.startedAt : null,
   };
 }
 
