@@ -38,7 +38,8 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [x] **Cookbook redesign** — recipes shown fully expanded (shared `RecipeView` component, also used by the Explore modal); per-recipe "Add to planner" / "Remove". (v0.2.2)
 - [x] **Planner as a meal-now composer** — time-of-day serve input (not datetime); the in-Planner cookbook picker removed (recipes are added from the Cookbook). (v0.2.3)
 - [x] **Cook tube-map** — the timeline is a London-Underground-style tube map: each dish a coloured line, each task a length of track, each instruction a station (big interchange = phase change, small tick = sub-step). Hands-on track solid, hands-free dashed. `RecipeTask` gains `group`; seeds restructured with per-ingredient prep chains; new "Chunky vegetable soup" seed. Schema v4. (v0.3.0)
-- [x] **Vertical tube-map + branches** — Cook is now a fixed vertical map (time top→bottom): food to the left of the track, instruction to the right. Branches split as 45° spurs with rounded corners. `RecipeTask` gains `ingredientIds`; the scheduler resolves + serving-scales ingredients onto each station. Planner shows a separate compact, text-free horizontal `PlanSummary`. Schema v5. (v0.4.0)
+- [x] **Vertical tube-map + branches** — Cook is now a fixed vertical map (time top→bottom): food to the left of the track, instruction to the right. `RecipeTask` gains `ingredientIds`; the scheduler resolves + serving-scales ingredients onto each station. Planner shows a separate compact, text-free horizontal `PlanSummary`. Schema v5. (v0.4.0)
+- [x] **Station labels + single-cook scheduler + 45° splits** — phase stations show the group as a bold title above the step (v0.4.1). The scheduler now *resolves* the single-cook constraint — backward list scheduling on one shared resource, hands-on tasks serialised, passive tasks free (v0.5.0). Cross-lane connectors render as true 45° splined branches, dashed into the hands-free side (v0.5.1).
 
 ## In progress
 
@@ -62,9 +63,12 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [ ] JSON export per recipe and whole cookbook (round-trips through `normaliseShape`).
 - [ ] Scale ingredient quantities to the planned serving count.
 
-### Scheduler (the meaty one — v0 shipped, needs the constraint solver)
-- [x] v0: merge recipe DAGs, as-late-as-possible pass, prep scaled by proficiency, conflict *detection*. (v0.2.0)
-- [ ] **Resolve the single-cook constraint** — no two `prep`/`active` tasks overlap; interleave non-critical prep into `passive`/`rest` gaps instead of just flagging the clash.
+### Scheduler
+- [x] v0: merge recipe DAGs, as-late-as-possible pass, conflict *detection*. (v0.2.0)
+- [x] Single-cook constraint resolved — hands-on tasks serialised, passive tasks free. (v0.5.0)
+- [ ] **Freshness / criticality metadata** — per-task window for how far before serve it can comfortably sit (carrots: hours; soufflé: minutes). Currently criticality is derived purely from graph distance to serve.
+- [ ] **Convenience clustering** — gather like tasks (all the chopping) and same-dish tasks, beyond the current gentle tiebreak.
+- [ ] **"Prep ahead" mode** — push low-criticality tasks into a Part A done up front, leaving a tighter Part B near serve.
 - [ ] Scale prep durations by the entry's serving count (more servings ⇒ more chopping; passive time unchanged).
 - [ ] Unit tests for the scheduler (it's pure — easy to test in isolation).
 
