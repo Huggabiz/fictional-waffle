@@ -2,11 +2,7 @@ import { useMemo } from 'react';
 import type { MealPlan, Recipe } from '../types';
 import { useAppStore } from '../store/useAppStore';
 import { criticalPathSeconds, formatDuration } from '../lib/recipeMetrics';
-import {
-  formatServeAt,
-  isoToLocalInputValue,
-  localInputValueToIso,
-} from '../lib/planTime';
+import { formatServeAt, isoFromTimeInput, timeInputValue } from '../lib/planTime';
 import './PlanComposer.css';
 
 interface PlanComposerProps {
@@ -57,12 +53,12 @@ export function PlanComposer({ plan, recipesById }: PlanComposerProps) {
           <span className="plan-composer__label">Serve at</span>
           <input
             className="plan-composer__input"
-            type="datetime-local"
-            value={isoToLocalInputValue(plan.serveAt)}
+            type="time"
+            value={timeInputValue(plan.serveAt)}
             onChange={(e) =>
               updatePlan(plan.id, (p) => ({
                 ...p,
-                serveAt: localInputValueToIso(e.target.value),
+                serveAt: isoFromTimeInput(e.target.value),
               }))
             }
           />
@@ -92,7 +88,7 @@ export function PlanComposer({ plan, recipesById }: PlanComposerProps) {
 
       {plan.entries.length === 0 ? (
         <p className="plan-composer__empty">
-          No dishes yet. Add recipes from your cookbook below.
+          No dishes yet. Add recipes from your Cookbook.
         </p>
       ) : (
         <ul className="plan-composer__entries">
