@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { Schedule, ScheduledTask } from '../lib/scheduler';
+import { useMemo } from 'react';
+import type { Schedule, ScheduledIngredient } from '../lib/scheduler';
 import { occupiesCook } from '../lib/scheduler';
+import {
+  connectorPoints,
+  layoutLanes,
+  roundedPath,
+} from '../lib/tubeLayout';
 import { formatDuration } from '../lib/recipeMetrics';
 import './TubeMap.css';
 
-// The cooking timeline drawn as a tube map. Each recipe is a coloured line;
-// each task is a length of track (long task = long track); each station is an
-// instruction. A phase change is a big interchange circle, a sub-step a small
-// tick. Hands-on track (prep/active) is solid; hands-free track (passive/rest)
-// is dashed — that's also when you'd be free to work another line.
-//
-// Layout is computed in orientation-agnostic (main, cross) coordinates — main
-// is the time axis — then mapped to (x, y). Horizontal on wide screens,
-// vertical on phones.
+// The kitchen timeline as a vertical tube map. Time runs top → bottom. Each
+// dish is a coloured line; each task is a length of track; each instruction
+// is a station (big interchange = phase change, small tick = sub-step). The
+// food sits to the LEFT of the track, the instruction to the RIGHT. Branches
+// split off as 45° spurs with rounded corners. Hands-on track (prep/active)
+// is solid; hands-free (passive/rest) is dashed.
 
 export const LINE_COLORS = [
   '#d8602f',
@@ -27,9 +29,18 @@ export function lineColor(index: number): string {
   return LINE_COLORS[index % LINE_COLORS.length];
 }
 
-type Orientation = 'horizontal' | 'vertical';
-
-const NARROW_BREAKPOINT = 760;
+const GEO = {
+  pxPerSec: 0.7,
+  leftAxis: 52,
+  mainStart: 56,
+  bottomPad: 52,
+  rightPad: 20,
+  foodGutter: 116,
+  trackPad: 22,
+  subLaneGap: 34,
+  instrGutter: 262,
+  cornerRadius: 13,
+};
 
 interface Lane {
   recipeId: string;
@@ -44,56 +55,6 @@ interface TubeMapProps {
   /** Current time in ms — drives the "you are here" line. */
   nowMs: number;
 }
-
-interface LaidTask extends ScheduledTask {
-  endOffset: number;
-  subLane: number;
-  major: boolean;
-  labelText: string;
-  /** Absolute coordinates (px) along each axis. */
-  startMain: number;
-  endMain: number;
-  cross: number;
-}
-
-interface LaidConnector {
-  color: string;
-  fromMain: number;
-  fromCross: number;
-  toMain: number;
-  toCross: number;
-  dashed: boolean;
-}
-
-interface LaidRecipe {
-  recipeId: string;
-  title: string;
-  color: string;
-  tasks: LaidTask[];
-}
-
-const GEO = {
-  horizontal: {
-    pxPerSec: 0.5,
-    mainStart: 26,
-    mainEndPad: 86,
-    axisGutter: 36,
-    bandHeadPad: 62,
-    subLaneGap: 46,
-    bandTailPad: 26,
-    crossEndPad: 18,
-  },
-  vertical: {
-    pxPerSec: 0.4,
-    mainStart: 26,
-    mainEndPad: 64,
-    axisGutter: 30,
-    bandHeadPad: 22,
-    subLaneGap: 64,
-    bandTailPad: 176,
-    crossEndPad: 18,
-  },
-} as const;
 
 function tickIntervalSec(totalSec: number): number {
   const minutes = totalSec / 60;
@@ -110,131 +71,58 @@ function formatClock(ms: number): string {
   });
 }
 
-function useOrientation(): Orientation {
-  const [orientation, setOrientation] = useState<Orientation>(() =>
-    typeof window !== 'undefined' && window.innerWidth < NARROW_BREAKPOINT
-      ? 'vertical'
-      : 'horizontal',
+function formatQty(q: number): string {
+  if (q <= 0) return '';
+  const r = Math.round(q * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+function foodText(ingredients: ScheduledIngredient[]): string {
+  const parts = ingredients.map((ing) =>
+    [formatQty(ing.quantity), ing.unit, ing.label].filter(Boolean).join(' '),
   );
-  useEffect(() => {
-    const onResize = () => {
-      setOrientation(
-        window.innerWidth < NARROW_BREAKPOINT ? 'vertical' : 'horizontal',
-      );
-    };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-  return orientation;
+  const joined = parts.join(', ');
+  return joined.length > 26 ? `${joined.slice(0, 25)}…` : joined;
 }
 
 export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
-  const orientation = useOrientation();
-
-  const layout = useMemo(() => {
-    const geo = GEO[orientation];
+  const view = useMemo(() => {
+    const g = GEO;
     const total = Math.max(schedule.totalDuration, 60);
-    const mainOf = (sec: number) => geo.mainStart + sec * geo.pxPerSec;
+    const mainOf = (sec: number) => g.mainStart + sec * g.pxPerSec;
+    const laid = layoutLanes(schedule, lanes);
 
-    // Tasks grouped by recipe, in lane order.
-    const tasksByRecipe = new Map<string, ScheduledTask[]>();
-    for (const lane of lanes) tasksByRecipe.set(lane.recipeId, []);
-    for (const task of schedule.tasks) {
-      tasksByRecipe.get(task.recipeId)?.push(task);
-    }
-
-    const recipes: LaidRecipe[] = [];
-    const connectors: LaidConnector[] = [];
-    let bandCursor = geo.axisGutter;
-
-    lanes.forEach((lane, laneIndex) => {
-      const color = lineColor(laneIndex);
-      const raw = tasksByRecipe.get(lane.recipeId) ?? [];
-      const sorted = [...raw].sort(
-        (a, b) => a.startOffset - b.startOffset || b.duration - a.duration,
-      );
-
-      // Greedy sub-lane assignment so parallel tasks don't stack on each other.
-      const subLaneEnd: number[] = [];
-      const subLaneOf = new Map<string, number>();
-      for (const task of sorted) {
-        let lane2 = subLaneEnd.findIndex((end) => end <= task.startOffset + 1);
-        if (lane2 === -1) {
-          lane2 = subLaneEnd.length;
-          subLaneEnd.push(0);
-        }
-        subLaneEnd[lane2] = task.startOffset + task.duration;
-        subLaneOf.set(task.taskId, lane2);
-      }
-      const subLaneCount = Math.max(1, subLaneEnd.length);
-
-      // The first task (by start) in each group is the interchange station.
-      const groupFirst = new Map<string, string>();
-      for (const task of sorted) {
-        if (task.group && !groupFirst.has(task.group)) {
-          groupFirst.set(task.group, task.taskId);
-        }
-      }
-
-      const crossOf = (subLane: number) =>
-        bandCursor + geo.bandHeadPad + subLane * geo.subLaneGap;
-
-      const laid: LaidTask[] = sorted.map((task) => {
-        const subLane = subLaneOf.get(task.taskId) ?? 0;
-        const major = !task.group || groupFirst.get(task.group) === task.taskId;
-        const labelText =
-          major && task.group ? `${task.group}: ${task.label}` : task.label;
-        return {
-          ...task,
-          endOffset: task.startOffset + task.duration,
-          subLane,
-          major,
-          labelText,
-          startMain: mainOf(task.startOffset),
-          endMain: mainOf(task.startOffset + task.duration),
-          cross: crossOf(subLane),
-        };
-      });
-
-      const byTaskId = new Map(laid.map((t) => [t.taskId, t]));
-      for (const task of laid) {
-        for (const depId of task.dependsOn) {
-          const dep = byTaskId.get(depId);
-          if (!dep) continue;
-          connectors.push({
-            color,
-            fromMain: dep.endMain,
-            fromCross: dep.cross,
-            toMain: task.startMain,
-            toCross: task.cross,
-            // A gap between a dependency ending and this task starting means
-            // the line is idle — nothing happening on this dish.
-            dashed: task.startOffset - dep.endOffset > 60,
-          });
-        }
-      }
-
-      recipes.push({
-        recipeId: lane.recipeId,
-        title: lane.title,
+    let bandLeft = g.leftAxis;
+    const recipes = laid.map((lane) => {
+      const color = lineColor(lane.laneIndex);
+      const trackLeft = bandLeft + g.foodGutter + g.trackPad;
+      const subLaneX = (subLane: number) => trackLeft + subLane * g.subLaneGap;
+      const trackRight = subLaneX(lane.subLaneCount - 1);
+      const out = {
+        ...lane,
         color,
-        tasks: laid,
-      });
-
-      bandCursor +=
-        geo.bandHeadPad +
-        (subLaneCount - 1) * geo.subLaneGap +
-        geo.bandTailPad;
+        bandLeft,
+        foodX: bandLeft + g.foodGutter - 12,
+        instrX: trackRight + 22,
+        subLaneX,
+      };
+      bandLeft +=
+        g.foodGutter +
+        g.trackPad +
+        (lane.subLaneCount - 1) * g.subLaneGap +
+        g.trackPad +
+        g.instrGutter;
+      return out;
     });
 
-    const crossSize = bandCursor + geo.crossEndPad;
-    const mainSize = mainOf(total) + geo.mainEndPad;
+    const width = bandLeft + g.rightPad;
+    const height = mainOf(total) + g.bottomPad;
 
     const step = tickIntervalSec(total);
-    const ticks: { main: number; label: string }[] = [];
+    const ticks: { y: number; label: string }[] = [];
     for (let o = 0; o < total - step * 0.4; o += step) {
       ticks.push({
-        main: mainOf(o),
+        y: mainOf(o),
         label: startMs
           ? formatClock(startMs + o * 1000)
           : o === 0
@@ -243,36 +131,25 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
       });
     }
 
-    const serveMain = mainOf(total);
+    const serveY = mainOf(total);
     const nowOffset = startMs !== null ? (nowMs - startMs) / 1000 : null;
-    const nowMain =
+    const nowY =
       nowOffset !== null && nowOffset >= 0 && nowOffset <= total
         ? mainOf(nowOffset)
         : null;
 
-    return { geo, recipes, connectors, crossSize, mainSize, ticks, serveMain, nowMain };
-  }, [schedule, lanes, startMs, nowMs, orientation]);
+    return { g, recipes, width, height, ticks, serveY, nowY, mainOf };
+  }, [schedule, lanes, startMs, nowMs]);
 
-  const horizontal = orientation === 'horizontal';
-  const { geo, crossSize, mainSize } = layout;
-  const svgWidth = horizontal ? mainSize : crossSize;
-  const svgHeight = horizontal ? crossSize : mainSize;
-
-  // (main, cross) → (x, y): main is the time axis, cross stacks the dishes.
-  const x = (main: number, cross: number) => (horizontal ? main : cross);
-  const y = (main: number, cross: number) => (horizontal ? cross : main);
-
-  const axisEnd = crossSize - geo.crossEndPad / 2;
+  const { g, recipes, width, height } = view;
+  const axisRight = width - g.rightPad;
 
   return (
     <div className="tube">
       <div className="tube__legend">
-        {layout.recipes.map((r) => (
+        {recipes.map((r) => (
           <span key={r.recipeId} className="tube__legend-item">
-            <span
-              className="tube__legend-line"
-              style={{ background: r.color }}
-            />
+            <span className="tube__legend-line" style={{ background: r.color }} />
             {r.title}
           </span>
         ))}
@@ -289,141 +166,182 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
       <div className="tube__scroll">
         <svg
           className="tube__svg"
-          width={svgWidth}
-          height={svgHeight}
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label="Cooking timeline as a tube map"
+          aria-label="Cooking timeline as a vertical tube map"
         >
-          {/* Axis ticks */}
-          {layout.ticks.map((tick, i) => (
+          {/* Time axis */}
+          {view.ticks.map((tick, i) => (
             <g key={`tick-${i}`}>
               <line
                 className="tube__tick"
-                x1={x(tick.main, geo.axisGutter)}
-                y1={y(tick.main, geo.axisGutter)}
-                x2={x(tick.main, axisEnd)}
-                y2={y(tick.main, axisEnd)}
+                x1={g.leftAxis - 8}
+                y1={tick.y}
+                x2={axisRight}
+                y2={tick.y}
               />
-              <text
-                className="tube__tick-label"
-                x={x(tick.main, 14)}
-                y={y(tick.main, 14)}
-                textAnchor={horizontal ? 'middle' : 'start'}
-                dominantBaseline={horizontal ? 'auto' : 'middle'}
-              >
+              <text className="tube__tick-label" x={10} y={tick.y} dominantBaseline="middle">
                 {tick.label}
               </text>
             </g>
           ))}
 
-          {/* Connectors (drawn under the track) */}
-          {layout.connectors.map((c, i) => (
-            <line
-              key={`conn-${i}`}
-              x1={x(c.fromMain, c.fromCross)}
-              y1={y(c.fromMain, c.fromCross)}
-              x2={x(c.toMain, c.toCross)}
-              y2={y(c.toMain, c.toCross)}
-              stroke={c.color}
-              strokeWidth={5}
-              strokeLinecap="round"
-              strokeDasharray={c.dashed ? '1 11' : undefined}
-              opacity={0.9}
-            />
-          ))}
-
-          {/* Track segments + stations + labels */}
-          {layout.recipes.map((recipe) =>
-            recipe.tasks.map((task) => {
-              const handsFree = !occupiesCook(task.kind);
-              const sx = x(task.startMain, task.cross);
-              const sy = y(task.startMain, task.cross);
-              return (
-                <g key={`${recipe.recipeId}:${task.taskId}`}>
-                  <line
-                    x1={sx}
-                    y1={sy}
-                    x2={x(task.endMain, task.cross)}
-                    y2={y(task.endMain, task.cross)}
-                    stroke={recipe.color}
-                    strokeWidth={8}
-                    strokeLinecap="round"
-                    strokeDasharray={handsFree ? '2 12' : undefined}
-                  >
-                    <title>
-                      {task.label} · {task.kind} ·{' '}
-                      {formatDuration(task.duration)}
-                    </title>
-                  </line>
-                  {task.major ? (
-                    <circle
-                      cx={sx}
-                      cy={sy}
-                      r={9}
-                      fill="var(--color-surface)"
-                      stroke={recipe.color}
-                      strokeWidth={3.5}
-                    />
-                  ) : (
-                    <circle cx={sx} cy={sy} r={4.5} fill={recipe.color} />
-                  )}
-                  <text
-                    className={
-                      task.major
-                        ? 'tube__label tube__label--major'
-                        : 'tube__label tube__label--minor'
-                    }
-                    x={horizontal ? sx + 10 : sx + 14}
-                    y={horizontal ? sy - 8 : sy + 4}
-                    textAnchor="start"
-                    transform={
-                      horizontal
-                        ? `rotate(-30 ${sx + 10} ${sy - 8})`
-                        : undefined
-                    }
-                  >
-                    {task.labelText}
-                  </text>
-                </g>
-              );
-            }),
-          )}
-
           {/* Serve marker */}
           <line
             className="tube__serve"
-            x1={x(layout.serveMain, geo.axisGutter)}
-            y1={y(layout.serveMain, geo.axisGutter)}
-            x2={x(layout.serveMain, axisEnd)}
-            y2={y(layout.serveMain, axisEnd)}
+            x1={g.leftAxis - 8}
+            y1={view.serveY}
+            x2={axisRight}
+            y2={view.serveY}
           />
           <text
             className="tube__serve-label"
-            x={x(layout.serveMain, 14)}
-            y={y(layout.serveMain, 14)}
-            textAnchor={horizontal ? 'middle' : 'start'}
-            dominantBaseline={horizontal ? 'auto' : 'middle'}
+            x={10}
+            y={view.serveY + 12}
+            dominantBaseline="middle"
           >
             Serve
           </text>
 
+          {/* Recipe titles */}
+          {recipes.map((r) => (
+            <text
+              key={`title-${r.recipeId}`}
+              className="tube__recipe-title"
+              x={r.bandLeft + g.foodGutter + g.trackPad}
+              y={g.mainStart - 26}
+              fill={r.color}
+            >
+              {r.title}
+            </text>
+          ))}
+
+          {/* Per recipe: connectors, then track, then stations + labels */}
+          {recipes.map((recipe) => {
+            const stationY = (offset: number) => view.mainOf(offset);
+            return (
+              <g key={recipe.recipeId}>
+                {/* Connectors (under the track) */}
+                {recipe.tasks.flatMap((task) =>
+                  task.dependsOn.flatMap((depId) => {
+                    const dep = recipe.byTaskId.get(depId);
+                    if (!dep) return [];
+                    const pts = connectorPoints(
+                      stationY(dep.endOffset),
+                      recipe.subLaneX(dep.subLane),
+                      stationY(task.startOffset),
+                      recipe.subLaneX(task.subLane),
+                    ).map((p) => ({ x: p.cross, y: p.main }));
+                    const dashed = task.startOffset - dep.endOffset > 60;
+                    return [
+                      <path
+                        key={`${recipe.recipeId}:${depId}->${task.taskId}`}
+                        d={roundedPath(pts, g.cornerRadius)}
+                        fill="none"
+                        stroke={recipe.color}
+                        strokeWidth={5}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray={dashed ? '1 11' : undefined}
+                        opacity={0.9}
+                      />,
+                    ];
+                  }),
+                )}
+
+                {/* Track segments */}
+                {recipe.tasks.map((task) => {
+                  const x = recipe.subLaneX(task.subLane);
+                  const handsFree = !occupiesCook(task.kind);
+                  return (
+                    <line
+                      key={`seg-${recipe.recipeId}:${task.taskId}`}
+                      x1={x}
+                      y1={stationY(task.startOffset)}
+                      x2={x}
+                      y2={stationY(task.endOffset)}
+                      stroke={recipe.color}
+                      strokeWidth={8}
+                      strokeLinecap="round"
+                      strokeDasharray={handsFree ? '2 12' : undefined}
+                    >
+                      <title>
+                        {task.label} · {task.kind} ·{' '}
+                        {formatDuration(task.duration)}
+                      </title>
+                    </line>
+                  );
+                })}
+
+                {/* Stations + food (left) + instruction (right) */}
+                {recipe.tasks.map((task) => {
+                  const x = recipe.subLaneX(task.subLane);
+                  const y = stationY(task.startOffset);
+                  const food = foodText(task.ingredients);
+                  const instruction =
+                    task.major && task.group
+                      ? `${task.group}: ${task.label}`
+                      : task.label;
+                  return (
+                    <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
+                      {task.major ? (
+                        <circle
+                          cx={x}
+                          cy={y}
+                          r={9}
+                          fill="var(--color-surface)"
+                          stroke={recipe.color}
+                          strokeWidth={3.5}
+                        />
+                      ) : (
+                        <circle cx={x} cy={y} r={4.5} fill={recipe.color} />
+                      )}
+                      {food && (
+                        <text
+                          className="tube__food"
+                          x={recipe.foodX}
+                          y={y}
+                          textAnchor="end"
+                          dominantBaseline="middle"
+                        >
+                          {food}
+                        </text>
+                      )}
+                      <text
+                        className={
+                          task.major
+                            ? 'tube__instr tube__instr--major'
+                            : 'tube__instr tube__instr--minor'
+                        }
+                        x={recipe.instrX}
+                        y={y}
+                        dominantBaseline="middle"
+                      >
+                        {instruction}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })}
+
           {/* "You are here" */}
-          {layout.nowMain !== null && (
+          {view.nowY !== null && (
             <>
               <line
                 className="tube__now"
-                x1={x(layout.nowMain, geo.axisGutter)}
-                y1={y(layout.nowMain, geo.axisGutter)}
-                x2={x(layout.nowMain, axisEnd)}
-                y2={y(layout.nowMain, axisEnd)}
+                x1={g.leftAxis - 8}
+                y1={view.nowY}
+                x2={axisRight}
+                y2={view.nowY}
               />
               <text
                 className="tube__now-label"
-                x={x(layout.nowMain, 14)}
-                y={y(layout.nowMain, 14)}
-                textAnchor={horizontal ? 'middle' : 'start'}
-                dominantBaseline={horizontal ? 'auto' : 'middle'}
+                x={10}
+                y={view.nowY - 7}
               >
                 now
               </text>

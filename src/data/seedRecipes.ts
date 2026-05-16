@@ -11,7 +11,8 @@ import type { Recipe } from '../types';
 // one job (e.g. one cook, one knife, working down a prep list). The tube-map
 // draws the first as a big interchange station and the rest as minor stops.
 // Prep is deliberately one task PER ingredient — "slice the carrots" is its
-// own station, not buried inside a vague "prep vegetables".
+// own station. `ingredientIds` links a step to the ingredients it handles,
+// shown on the food side of the tube-map.
 
 export const SEED_RECIPES: Recipe[] = [
   {
@@ -31,14 +32,14 @@ export const SEED_RECIPES: Recipe[] = [
       { id: 'i8', label: 'Salt', quantity: 0, unit: 'to taste' },
     ],
     tasks: [
-      { id: 'g1', label: 'Mince the garlic', kind: 'prep', baselineSeconds: 60, dependsOn: [], group: 'Prep prawns & garlic' },
-      { id: 'g2', label: 'Peel & devein the prawns', kind: 'prep', baselineSeconds: 150, dependsOn: ['g1'], group: 'Prep prawns & garlic' },
-      { id: 'g3', label: 'Pat prawns dry, season', kind: 'prep', baselineSeconds: 60, dependsOn: ['g2'], group: 'Prep prawns & garlic' },
-      { id: 'w1', label: 'Boil a pan of salted water', kind: 'active', baselineSeconds: 120, dependsOn: [] },
-      { id: 'w2', label: 'Cook the spaghetti', kind: 'passive', baselineSeconds: 600, dependsOn: ['w1'] },
-      { id: 'c1', label: 'Heat pan, melt the butter', kind: 'active', baselineSeconds: 120, dependsOn: ['g3'] },
-      { id: 'c2', label: 'Sear the prawns', kind: 'active', baselineSeconds: 180, dependsOn: ['c1'] },
-      { id: 'f1', label: 'Drain pasta, toss with prawns & lemon', kind: 'active', baselineSeconds: 90, dependsOn: ['w2', 'c2'] },
+      { id: 'g1', label: 'Mince the garlic', kind: 'prep', baselineSeconds: 60, dependsOn: [], group: 'Prep prawns & garlic', ingredientIds: ['i3'] },
+      { id: 'g2', label: 'Peel & devein the prawns', kind: 'prep', baselineSeconds: 150, dependsOn: ['g1'], group: 'Prep prawns & garlic', ingredientIds: ['i2'] },
+      { id: 'g3', label: 'Pat prawns dry, season', kind: 'prep', baselineSeconds: 60, dependsOn: ['g2'], group: 'Prep prawns & garlic', ingredientIds: ['i8'] },
+      { id: 'w1', label: 'Boil a pan of salted water', kind: 'active', baselineSeconds: 120, dependsOn: [], ingredientIds: [] },
+      { id: 'w2', label: 'Cook the spaghetti', kind: 'passive', baselineSeconds: 600, dependsOn: ['w1'], ingredientIds: ['i1'] },
+      { id: 'c1', label: 'Heat pan, melt the butter', kind: 'active', baselineSeconds: 120, dependsOn: ['g3'], ingredientIds: ['i4'] },
+      { id: 'c2', label: 'Sear the prawns', kind: 'active', baselineSeconds: 180, dependsOn: ['c1'], ingredientIds: ['i2'] },
+      { id: 'f1', label: 'Drain pasta, toss with prawns & lemon', kind: 'active', baselineSeconds: 90, dependsOn: ['w2', 'c2'], ingredientIds: ['i6', 'i7'] },
     ],
   },
   {
@@ -56,15 +57,15 @@ export const SEED_RECIPES: Recipe[] = [
       { id: 'i6', label: 'Flaky salt', quantity: 0, unit: 'to taste' },
     ],
     tasks: [
-      { id: 'o1', label: 'Pre-heat oven to 200°C', kind: 'passive', baselineSeconds: 720, dependsOn: [] },
-      { id: 'v1', label: 'Halve the baby potatoes', kind: 'prep', baselineSeconds: 180, dependsOn: [], group: 'Prep the tray' },
-      { id: 'v2', label: 'Halve the garlic head', kind: 'prep', baselineSeconds: 30, dependsOn: ['v1'], group: 'Prep the tray' },
-      { id: 'v3', label: 'Pat chicken dry, salt generously', kind: 'prep', baselineSeconds: 150, dependsOn: ['v2'], group: 'Prep the tray' },
-      { id: 'v4', label: 'Toss potatoes with oil & thyme', kind: 'prep', baselineSeconds: 90, dependsOn: ['v3'], group: 'Prep the tray' },
-      { id: 'a1', label: 'Arrange tray: chicken on the potatoes', kind: 'active', baselineSeconds: 150, dependsOn: ['v4'] },
-      { id: 'r1', label: 'Roast', kind: 'passive', baselineSeconds: 4200, dependsOn: ['o1', 'a1'] },
-      { id: 'rest1', label: 'Rest the chicken on a board', kind: 'rest', baselineSeconds: 600, dependsOn: ['r1'] },
-      { id: 'a2', label: 'Carve and plate', kind: 'active', baselineSeconds: 240, dependsOn: ['rest1'] },
+      { id: 'o1', label: 'Pre-heat oven to 200°C', kind: 'passive', baselineSeconds: 720, dependsOn: [], ingredientIds: [] },
+      { id: 'v1', label: 'Halve the baby potatoes', kind: 'prep', baselineSeconds: 180, dependsOn: [], group: 'Prep the tray', ingredientIds: ['i2'] },
+      { id: 'v2', label: 'Halve the garlic head', kind: 'prep', baselineSeconds: 30, dependsOn: ['v1'], group: 'Prep the tray', ingredientIds: ['i3'] },
+      { id: 'v3', label: 'Pat chicken dry, salt generously', kind: 'prep', baselineSeconds: 150, dependsOn: ['v2'], group: 'Prep the tray', ingredientIds: ['i1', 'i6'] },
+      { id: 'v4', label: 'Toss potatoes with oil & thyme', kind: 'prep', baselineSeconds: 90, dependsOn: ['v3'], group: 'Prep the tray', ingredientIds: ['i4', 'i5'] },
+      { id: 'a1', label: 'Arrange tray: chicken on the potatoes', kind: 'active', baselineSeconds: 150, dependsOn: ['v4'], ingredientIds: [] },
+      { id: 'r1', label: 'Roast', kind: 'passive', baselineSeconds: 4200, dependsOn: ['o1', 'a1'], ingredientIds: [] },
+      { id: 'rest1', label: 'Rest the chicken on a board', kind: 'rest', baselineSeconds: 600, dependsOn: ['r1'], ingredientIds: [] },
+      { id: 'a2', label: 'Carve and plate', kind: 'active', baselineSeconds: 240, dependsOn: ['rest1'], ingredientIds: [] },
     ],
   },
   {
@@ -84,11 +85,11 @@ export const SEED_RECIPES: Recipe[] = [
       { id: 'i8', label: 'Dried oregano', quantity: 0.5, unit: 'tsp' },
     ],
     tasks: [
-      { id: 'p1', label: 'Chop tomatoes into chunks', kind: 'prep', baselineSeconds: 150, dependsOn: [], group: 'Prep the salad' },
-      { id: 'p2', label: 'Slice the cucumber', kind: 'prep', baselineSeconds: 120, dependsOn: ['p1'], group: 'Prep the salad' },
-      { id: 'p3', label: 'Thinly slice the red onion', kind: 'prep', baselineSeconds: 90, dependsOn: ['p2'], group: 'Prep the salad' },
-      { id: 'p4', label: 'Cube the feta', kind: 'prep', baselineSeconds: 60, dependsOn: ['p3'], group: 'Prep the salad' },
-      { id: 't1', label: 'Toss with oil, vinegar & oregano', kind: 'active', baselineSeconds: 60, dependsOn: ['p4'] },
+      { id: 'p1', label: 'Chop tomatoes into chunks', kind: 'prep', baselineSeconds: 150, dependsOn: [], group: 'Prep the salad', ingredientIds: ['i1'] },
+      { id: 'p2', label: 'Slice the cucumber', kind: 'prep', baselineSeconds: 120, dependsOn: ['p1'], group: 'Prep the salad', ingredientIds: ['i2'] },
+      { id: 'p3', label: 'Thinly slice the red onion', kind: 'prep', baselineSeconds: 90, dependsOn: ['p2'], group: 'Prep the salad', ingredientIds: ['i3'] },
+      { id: 'p4', label: 'Cube the feta', kind: 'prep', baselineSeconds: 60, dependsOn: ['p3'], group: 'Prep the salad', ingredientIds: ['i4'] },
+      { id: 't1', label: 'Toss with oil, vinegar & oregano', kind: 'active', baselineSeconds: 60, dependsOn: ['p4'], ingredientIds: ['i5', 'i6', 'i7', 'i8'] },
     ],
   },
   {
@@ -108,15 +109,15 @@ export const SEED_RECIPES: Recipe[] = [
       { id: 'i8', label: 'Salt & pepper', quantity: 0, unit: 'to taste' },
     ],
     tasks: [
-      { id: 'v1', label: 'Dice the onion', kind: 'prep', baselineSeconds: 90, dependsOn: [], group: 'Prep vegetables' },
-      { id: 'v2', label: 'Slice the leek', kind: 'prep', baselineSeconds: 90, dependsOn: ['v1'], group: 'Prep vegetables' },
-      { id: 'v3', label: 'Slice the carrots', kind: 'prep', baselineSeconds: 120, dependsOn: ['v2'], group: 'Prep vegetables' },
-      { id: 'v4', label: 'Dice the celery', kind: 'prep', baselineSeconds: 90, dependsOn: ['v3'], group: 'Prep vegetables' },
-      { id: 'v5', label: 'Cube the potato', kind: 'prep', baselineSeconds: 90, dependsOn: ['v4'], group: 'Prep vegetables' },
-      { id: 'c1', label: 'Sweat onion & leek in oil', kind: 'active', baselineSeconds: 240, dependsOn: ['v5'] },
-      { id: 'c2', label: 'Add carrots, celery, potato & stock', kind: 'active', baselineSeconds: 120, dependsOn: ['c1'] },
-      { id: 'c3', label: 'Simmer until tender', kind: 'passive', baselineSeconds: 1500, dependsOn: ['c2'] },
-      { id: 'c4', label: 'Blend smooth and season', kind: 'active', baselineSeconds: 120, dependsOn: ['c3'] },
+      { id: 'v1', label: 'Dice the onion', kind: 'prep', baselineSeconds: 90, dependsOn: [], group: 'Prep vegetables', ingredientIds: ['i1'] },
+      { id: 'v2', label: 'Slice the leek', kind: 'prep', baselineSeconds: 90, dependsOn: ['v1'], group: 'Prep vegetables', ingredientIds: ['i2'] },
+      { id: 'v3', label: 'Slice the carrots', kind: 'prep', baselineSeconds: 120, dependsOn: ['v2'], group: 'Prep vegetables', ingredientIds: ['i3'] },
+      { id: 'v4', label: 'Dice the celery', kind: 'prep', baselineSeconds: 90, dependsOn: ['v3'], group: 'Prep vegetables', ingredientIds: ['i4'] },
+      { id: 'v5', label: 'Cube the potato', kind: 'prep', baselineSeconds: 90, dependsOn: ['v4'], group: 'Prep vegetables', ingredientIds: ['i5'] },
+      { id: 'c1', label: 'Sweat onion & leek in oil', kind: 'active', baselineSeconds: 240, dependsOn: ['v5'], ingredientIds: ['i7'] },
+      { id: 'c2', label: 'Add carrots, celery, potato & stock', kind: 'active', baselineSeconds: 120, dependsOn: ['c1'], ingredientIds: ['i6'] },
+      { id: 'c3', label: 'Simmer until tender', kind: 'passive', baselineSeconds: 1500, dependsOn: ['c2'], ingredientIds: [] },
+      { id: 'c4', label: 'Blend smooth and season', kind: 'active', baselineSeconds: 120, dependsOn: ['c3'], ingredientIds: ['i8'] },
     ],
   },
 ];

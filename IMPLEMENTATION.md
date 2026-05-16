@@ -37,7 +37,8 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [x] **Servings model** — plan entries store an absolute `servings` count (not a `scale` multiplier); Profile gains `defaultServings`. Schema v3. (v0.2.1)
 - [x] **Cookbook redesign** — recipes shown fully expanded (shared `RecipeView` component, also used by the Explore modal); per-recipe "Add to planner" / "Remove". (v0.2.2)
 - [x] **Planner as a meal-now composer** — time-of-day serve input (not datetime); the in-Planner cookbook picker removed (recipes are added from the Cookbook). (v0.2.3)
-- [x] **Cook tube-map** — the timeline is now a London-Underground-style tube map: each dish a coloured line, each task a length of track, each instruction a station (big interchange = phase change, small tick = sub-step). Hands-on track solid, hands-free dashed. Responsive: horizontal on wide screens, vertical on phones. Shared by Cook (live) and Planner (preview). `RecipeTask` gains `group`; seeds restructured with per-ingredient prep chains; new "Chunky vegetable soup" seed. Schema v4. (v0.3.0)
+- [x] **Cook tube-map** — the timeline is a London-Underground-style tube map: each dish a coloured line, each task a length of track, each instruction a station (big interchange = phase change, small tick = sub-step). Hands-on track solid, hands-free dashed. `RecipeTask` gains `group`; seeds restructured with per-ingredient prep chains; new "Chunky vegetable soup" seed. Schema v4. (v0.3.0)
+- [x] **Vertical tube-map + branches** — Cook is now a fixed vertical map (time top→bottom): food to the left of the track, instruction to the right. Branches split as 45° spurs with rounded corners. `RecipeTask` gains `ingredientIds`; the scheduler resolves + serving-scales ingredients onto each station. Planner shows a separate compact, text-free horizontal `PlanSummary`. Schema v5. (v0.4.0)
 
 ## In progress
 
@@ -73,7 +74,7 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [ ] Serve-time presets ("tonight at 7" / "in 90 minutes").
 
 ### Cook
-- [x] Merged timeline as a tube map (responsive horizontal/vertical, ticking now-line). (v0.3.0)
+- [x] Merged timeline as a tube map — vertical, food/instruction either side, 45° branches, ticking now-line. (v0.3.0–v0.4.0)
 - [ ] **Target ("should be here") ghost line** alongside the now-line, once per-task progress is tracked.
 - [ ] "Start cook" action that anchors `now` to the schedule.
 - [ ] Per-task "done" tap → marks complete and re-projects downstream.

@@ -36,6 +36,8 @@ export interface RecipeTask {
    * station, the rest are minor stops. Ungrouped tasks are their own phase.
    */
   group?: string;
+  /** Ids of the recipe ingredients this step handles — shown beside the station. */
+  ingredientIds: string[];
 }
 
 export interface RecipeIngredient {

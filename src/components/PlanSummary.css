@@ -1,0 +1,59 @@
+.plan-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.plan-summary__caption {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.plan-summary__scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.plan-summary__svg {
+  display: block;
+}
+
+.plan-summary__tick {
+  stroke: var(--color-border);
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+}
+
+.plan-summary__tick-label {
+  fill: var(--color-text-muted);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+.plan-summary__serve {
+  stroke: var(--color-accent-strong);
+  stroke-width: 2;
+}
+
+.plan-summary__serve-label {
+  fill: var(--color-accent-strong);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.plan-summary__now {
+  stroke: #d4443a;
+  stroke-width: 2;
+}
+
+@media (prefers-color-scheme: dark) {
+  .plan-summary__now {
+    stroke: #ff6b5e;
+  }
+}

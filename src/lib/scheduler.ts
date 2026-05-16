@@ -11,6 +11,14 @@ import type { MealPlan, Profile, Recipe, RecipeTask, TaskKind } from '../types';
 // conflicts. Resolving them (interleaving prep into passive gaps) is the
 // next slice.
 
+/** An ingredient as it appears at a station — quantity already scaled to the
+ *  plan entry's serving count. */
+export interface ScheduledIngredient {
+  label: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface ScheduledTask {
   recipeId: string;
   recipeTitle: string;
@@ -25,6 +33,8 @@ export interface ScheduledTask {
   group?: string;
   /** Recipe-local ids this task depends on — for drawing track connectors. */
   dependsOn: string[];
+  /** Ingredients this step handles, scaled to the planned servings. */
+  ingredients: ScheduledIngredient[];
 }
 
 /** A stretch of time where two or more cook-occupying tasks overlap. */
@@ -157,6 +167,11 @@ export function buildSchedule(
       continue;
     }
 
+    // Ingredient quantities scale with how many servings this plan wants.
+    const ingredientById = new Map(recipe.ingredients.map((i) => [i.id, i]));
+    const servingFactor =
+      recipe.servings > 0 ? entry.servings / recipe.servings : 1;
+
     for (const task of recipe.tasks) {
       const leadStart = leads.get(task.id);
       if (leadStart === undefined) continue;
@@ -168,6 +183,14 @@ export function buildSchedule(
         kind: task.kind,
         duration: scaledDuration(task, profile),
         dependsOn: task.dependsOn,
+        ingredients: task.ingredientIds
+          .map((id) => ingredientById.get(id))
+          .filter((i): i is NonNullable<typeof i> => Boolean(i))
+          .map((i) => ({
+            label: i.label,
+            quantity: i.quantity * servingFactor,
+            unit: i.unit,
+          })),
         ...(task.group ? { group: task.group } : {}),
         leadStart,
       });

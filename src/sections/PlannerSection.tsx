@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useAllRecipes, usePlanSchedule } from '../store/selectors';
 import { PlanComposer } from '../components/PlanComposer';
-import { TubeMap } from '../components/TubeMap';
+import { PlanSummary } from '../components/PlanSummary';
 import type { MealPlan } from '../types';
 import './Section.css';
 
@@ -74,7 +74,7 @@ export function PlannerSection() {
             ) : (
               <>
                 {schedule && schedule.tasks.length > 0 && (
-                  <TubeMap
+                  <PlanSummary
                     schedule={schedule}
                     lanes={lanes}
                     startMs={startMs}
