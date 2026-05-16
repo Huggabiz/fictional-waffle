@@ -29,13 +29,6 @@ export function CookSection() {
 
   const { schedule, lanes, startMs, serveMs } = usePlanSchedule(activePlan);
 
-  const conflictSeconds = schedule
-    ? schedule.conflicts.reduce(
-        (sum, c) => sum + (c.endOffset - c.startOffset),
-        0,
-      )
-    : 0;
-
   const status = useMemo(() => {
     if (startMs === null || serveMs === null) return null;
     if (now < startMs)
@@ -131,14 +124,6 @@ export function CookSection() {
           {schedule.cyclicRecipeIds.length} recipe
           {schedule.cyclicRecipeIds.length === 1 ? '' : 's'} skipped — their
           task steps depend on each other in a loop.
-        </p>
-      )}
-
-      {schedule.conflicts.length > 0 && (
-        <p className="cook-warning">
-          Cook double-booked for ~{formatDuration(conflictSeconds)} total. The
-          scheduler currently lays every task as late as possible; interleaving
-          prep into hands-free gaps to clear these clashes is the next step.
         </p>
       )}
 

@@ -4,15 +4,23 @@ import type { MealPlan, Profile, Recipe, RecipeTask, TaskKind } from '../types';
 // isolation (CLAUDE.md). Given a plan, the recipes it references, and the
 // active profile, it produces one merged timeline.
 //
-// v0 strategy: schedule every task as late as possible (backward pass from
-// serve time). This is correct for dependencies and gives a tight timeline,
-// but it does NOT yet resolve the single-cook constraint — it only DETECTS
-// where the cook would be double-booked and reports those regions as
-// conflicts. Resolving them (interleaving prep into passive gaps) is the
-// next slice.
+// The hard constraint: there is ONE cook. No two hands-on tasks (prep /
+// active) may overlap. Passive tasks (oven, simmer) and rest don't need the
+// cook, so they run freely in the background.
+//
+// Strategy — backward list scheduling on a single shared resource:
+//  * Work backward from serve. A task is scheduled once all the tasks that
+//    depend on it are scheduled.
+//  * Each task is placed as late as it can be (closest to serve): a passive
+//    task simply ends when its earliest dependent starts; a hands-on task
+//    takes the latest cook slot that is free and ends in time.
+//  * Among tasks ready to schedule we take the most serve-critical first
+//    (smallest lead), with gentle clustering by dish and by task kind.
+//
+// Times are tracked in "lead" units — seconds before serve. serve = 0;
+// a larger lead is earlier. The final ScheduledTask offsets are forward
+// from the schedule's start.
 
-/** An ingredient as it appears at a station — quantity already scaled to the
- *  plan entry's serving count. */
 export interface ScheduledIngredient {
   label: string;
   quantity: number;
@@ -37,17 +45,10 @@ export interface ScheduledTask {
   ingredients: ScheduledIngredient[];
 }
 
-/** A stretch of time where two or more cook-occupying tasks overlap. */
-export interface CookConflict {
-  startOffset: number;
-  endOffset: number;
-}
-
 export interface Schedule {
   tasks: ScheduledTask[];
   /** Earliest task start → serve, in seconds. */
   totalDuration: number;
-  conflicts: CookConflict[];
   /** Ids of plan recipes skipped because their task graph has a cycle. */
   cyclicRecipeIds: string[];
 }
@@ -64,84 +65,65 @@ export function occupiesCook(kind: TaskKind): boolean {
   return kind === 'prep' || kind === 'active';
 }
 
-/**
- * Per recipe: the "lead start" of each task — seconds before serve that the
- * task must begin. Computed by an as-late-as-possible backward pass.
- * Returns null if the recipe's dependency graph has a cycle.
- */
-function computeLeadStarts(
-  recipe: Recipe,
-  profile: Profile,
-): Map<string, number> | null {
+function hasCycle(recipe: Recipe): boolean {
   const byId = new Map(recipe.tasks.map((t) => [t.id, t]));
+  const state = new Map<string, 1 | 2>(); // 1 = visiting, 2 = done
 
-  // Invert dependsOn into a dependents map so we can walk forward.
-  const dependents = new Map<string, string[]>();
-  for (const t of recipe.tasks) dependents.set(t.id, []);
-  for (const t of recipe.tasks) {
-    for (const dep of t.dependsOn) {
-      if (byId.has(dep)) dependents.get(dep)!.push(t.id);
-    }
-  }
-
-  const leadStart = new Map<string, number>();
-  const visiting = new Set<string>();
-
-  // leadStart(X) = leadEnd(X) + duration(X)
-  // leadEnd(X)   = max leadStart over tasks that depend on X (0 if terminal),
-  //               because X must finish before its earliest-starting dependent.
-  function compute(id: string): number | null {
-    const cached = leadStart.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return null; // cycle
+  function visit(id: string): boolean {
+    const s = state.get(id);
+    if (s === 1) return true;
+    if (s === 2) return false;
+    state.set(id, 1);
     const task = byId.get(id);
-    if (!task) return 0;
-
-    visiting.add(id);
-    let leadEnd = 0;
-    for (const dependentId of dependents.get(id) ?? []) {
-      const dependentLead = compute(dependentId);
-      if (dependentLead === null) return null;
-      if (dependentLead > leadEnd) leadEnd = dependentLead;
-    }
-    visiting.delete(id);
-
-    const value = leadEnd + scaledDuration(task, profile);
-    leadStart.set(id, value);
-    return value;
-  }
-
-  for (const t of recipe.tasks) {
-    if (compute(t.id) === null) return null;
-  }
-  return leadStart;
-}
-
-/** Sweep cook-occupying tasks for overlapping regions. v0: pairwise sweep,
- *  merged into contiguous bands — good enough to flag "you're double-booked". */
-function findConflicts(tasks: ScheduledTask[]): CookConflict[] {
-  const intervals = tasks
-    .filter((t) => occupiesCook(t.kind))
-    .map((t) => ({ start: t.startOffset, end: t.startOffset + t.duration }))
-    .sort((a, b) => a.start - b.start);
-
-  const conflicts: CookConflict[] = [];
-  let coverEnd = -Infinity;
-
-  for (const iv of intervals) {
-    if (iv.start < coverEnd) {
-      const cStart = iv.start;
-      const cEnd = Math.min(coverEnd, iv.end);
-      const last = conflicts[conflicts.length - 1];
-      if (last && cStart <= last.endOffset) {
-        last.endOffset = Math.max(last.endOffset, cEnd);
-      } else {
-        conflicts.push({ startOffset: cStart, endOffset: cEnd });
+    if (task) {
+      for (const dep of task.dependsOn) {
+        if (byId.has(dep) && visit(dep)) return true;
       }
     }
-    coverEnd = Math.max(coverEnd, iv.end);
+    state.set(id, 2);
+    return false;
   }
-  return conflicts;
+
+  return recipe.tasks.some((t) => visit(t.id));
+}
+
+interface Node {
+  globalId: string;
+  recipeId: string;
+  recipeTitle: string;
+  task: RecipeTask;
+  duration: number;
+  ingredients: ScheduledIngredient[];
+  /** Global ids of tasks that depend on this one. */
+  successors: string[];
+  /** Global ids this task depends on. */
+  predecessors: string[];
+  pendingSuccessors: number;
+  scheduled: boolean;
+  /** Lead (s before serve) at which the task ends / starts. */
+  endLead: number;
+  startLead: number;
+}
+
+interface LeadInterval {
+  lo: number; // endLead — later in wall time
+  hi: number; // startLead — earlier in wall time
+}
+
+/** Latest cook slot (smallest lead = closest to serve) of `duration` that
+ *  ends no sooner than `minEndLead` and clashes with no booked interval. */
+function findCookSlot(
+  minEndLead: number,
+  duration: number,
+  booked: LeadInterval[],
+): number {
+  let endLead = minEndLead;
+  for (;;) {
+    const startLead = endLead + duration;
+    const clash = booked.find((iv) => iv.lo < startLead && iv.hi > endLead);
+    if (!clash) return endLead;
+    endLead = clash.hi; // shift earlier in wall time, past the clash
+  }
 }
 
 export function buildSchedule(
@@ -149,40 +131,32 @@ export function buildSchedule(
   recipesById: Map<string, Recipe>,
   profile: Profile,
 ): Schedule {
-  interface Pending extends Omit<ScheduledTask, 'startOffset'> {
-    leadStart: number;
-  }
-
-  const pending: Pending[] = [];
+  const nodes = new Map<string, Node>();
   const cyclicRecipeIds: string[] = [];
-  let maxLead = 0;
+
+  const globalId = (recipeId: string, taskId: string) =>
+    `${recipeId}::${taskId}`;
 
   for (const entry of plan.entries) {
     const recipe = recipesById.get(entry.recipeId);
     if (!recipe) continue;
-
-    const leads = computeLeadStarts(recipe, profile);
-    if (!leads) {
+    if (hasCycle(recipe)) {
       cyclicRecipeIds.push(recipe.id);
       continue;
     }
 
-    // Ingredient quantities scale with how many servings this plan wants.
     const ingredientById = new Map(recipe.ingredients.map((i) => [i.id, i]));
     const servingFactor =
       recipe.servings > 0 ? entry.servings / recipe.servings : 1;
+    const localIds = new Set(recipe.tasks.map((t) => t.id));
 
     for (const task of recipe.tasks) {
-      const leadStart = leads.get(task.id);
-      if (leadStart === undefined) continue;
-      pending.push({
+      nodes.set(globalId(recipe.id, task.id), {
+        globalId: globalId(recipe.id, task.id),
         recipeId: recipe.id,
         recipeTitle: recipe.title,
-        taskId: task.id,
-        label: task.label,
-        kind: task.kind,
+        task,
         duration: scaledDuration(task, profile),
-        dependsOn: task.dependsOn,
         ingredients: task.ingredientIds
           .map((id) => ingredientById.get(id))
           .filter((i): i is NonNullable<typeof i> => Boolean(i))
@@ -191,23 +165,111 @@ export function buildSchedule(
             quantity: i.quantity * servingFactor,
             unit: i.unit,
           })),
-        ...(task.group ? { group: task.group } : {}),
-        leadStart,
+        predecessors: task.dependsOn
+          .filter((d) => localIds.has(d))
+          .map((d) => globalId(recipe.id, d)),
+        successors: [],
+        pendingSuccessors: 0,
+        scheduled: false,
+        endLead: 0,
+        startLead: 0,
       });
-      if (leadStart > maxLead) maxLead = leadStart;
     }
   }
 
-  // All recipes share serve (lead 0); offset = how far after the global start.
-  const tasks: ScheduledTask[] = pending.map(({ leadStart, ...rest }) => ({
-    ...rest,
-    startOffset: maxLead - leadStart,
-  }));
+  // Wire successors from predecessors.
+  for (const node of nodes.values()) {
+    for (const predId of node.predecessors) {
+      nodes.get(predId)?.successors.push(node.globalId);
+    }
+  }
+  for (const node of nodes.values()) {
+    node.pendingSuccessors = node.successors.length;
+  }
 
-  return {
-    tasks,
-    totalDuration: maxLead,
-    conflicts: findConflicts(tasks),
-    cyclicRecipeIds,
-  };
+  // Backward list scheduling.
+  const booked: LeadInterval[] = [];
+  const ready: Node[] = [];
+  for (const node of nodes.values()) {
+    if (node.pendingSuccessors === 0) ready.push(node);
+  }
+
+  let lastRecipeId: string | null = null;
+  let lastKind: TaskKind | null = null;
+
+  while (ready.length > 0) {
+    // Most serve-critical first (smallest required lead), then cluster by the
+    // dish and the kind of task we just did, then longer tasks first.
+    ready.sort((a, b) => {
+      const la = requiredEndLead(a, nodes);
+      const lb = requiredEndLead(b, nodes);
+      if (la !== lb) return la - lb;
+      const sameDishA = a.recipeId === lastRecipeId ? 0 : 1;
+      const sameDishB = b.recipeId === lastRecipeId ? 0 : 1;
+      if (sameDishA !== sameDishB) return sameDishA - sameDishB;
+      const sameKindA = a.task.kind === lastKind ? 0 : 1;
+      const sameKindB = b.task.kind === lastKind ? 0 : 1;
+      if (sameKindA !== sameKindB) return sameKindA - sameKindB;
+      return b.duration - a.duration;
+    });
+
+    const node = ready.shift()!;
+    const minEndLead = requiredEndLead(node, nodes);
+
+    if (occupiesCook(node.task.kind)) {
+      node.endLead = findCookSlot(minEndLead, node.duration, booked);
+    } else {
+      node.endLead = minEndLead; // passive / rest — as late as possible
+    }
+    node.startLead = node.endLead + node.duration;
+    node.scheduled = true;
+    if (occupiesCook(node.task.kind)) {
+      booked.push({ lo: node.endLead, hi: node.startLead });
+    }
+    lastRecipeId = node.recipeId;
+    lastKind = node.task.kind;
+
+    for (const predId of node.predecessors) {
+      const pred = nodes.get(predId);
+      if (!pred) continue;
+      pred.pendingSuccessors -= 1;
+      if (pred.pendingSuccessors === 0) ready.push(pred);
+    }
+  }
+
+  let totalDuration = 0;
+  for (const node of nodes.values()) {
+    if (node.startLead > totalDuration) totalDuration = node.startLead;
+  }
+
+  const tasks: ScheduledTask[] = [];
+  for (const node of nodes.values()) {
+    if (!node.scheduled) continue; // unreachable in an acyclic graph
+    tasks.push({
+      recipeId: node.recipeId,
+      recipeTitle: node.recipeTitle,
+      taskId: node.task.id,
+      label: node.task.label,
+      kind: node.task.kind,
+      startOffset: totalDuration - node.startLead,
+      duration: node.duration,
+      dependsOn: node.task.dependsOn,
+      ingredients: node.ingredients,
+      ...(node.task.group ? { group: node.task.group } : {}),
+    });
+  }
+
+  return { tasks, totalDuration, cyclicRecipeIds };
+}
+
+/** A task must end before every dependent starts; 0 (serve) if terminal. */
+function requiredEndLead(node: Node, nodes: Map<string, Node>): number {
+  let lead = 0;
+  for (const succId of node.successors) {
+    const succ = nodes.get(succId);
+    if (succ && succ.scheduled && succ.startLead > lead) {
+      lead = succ.startLead;
+    }
+  }
+  return lead;
 }
