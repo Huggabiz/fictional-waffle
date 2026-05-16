@@ -11,7 +11,7 @@ import type {
   TaskKind,
 } from '../types';
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 /** Fallback serving count when nothing better is known. */
 const DEFAULT_SERVINGS = 2;
@@ -81,6 +81,7 @@ function normaliseProfile(v: unknown): Profile {
     speedMultiplier: asNumber(o.speedMultiplier, 1),
     units: o.units === 'imperial' ? 'imperial' : 'metric',
     defaultServings: asNumber(o.defaultServings, DEFAULT_SERVINGS),
+    autoAdvance: typeof o.autoAdvance === 'boolean' ? o.autoAdvance : true,
   };
 }
 
@@ -154,6 +155,8 @@ function normalisePlan(v: unknown): MealPlan | null {
     serveAt: typeof o.serveAt === 'string' ? o.serveAt : null,
     entries: asArray(o.entries, normalisePlanEntry),
     startedAt: typeof o.startedAt === 'string' ? o.startedAt : null,
+    pausedAt: typeof o.pausedAt === 'string' ? o.pausedAt : null,
+    manualStep: asNumber(o.manualStep, 0),
   };
 }
 

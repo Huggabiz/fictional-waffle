@@ -9,7 +9,7 @@ import { formatServeAt } from '../lib/planTime';
 import { TubeMap, lineColor } from '../components/TubeMap';
 import './CookSection.css';
 
-const TICK_MS = 1_000; // the now-line and countdown creep smoothly
+const TICK_MS = 1_000;
 
 function formatCountdown(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
@@ -31,12 +31,14 @@ interface TaskWindow {
 export function CookSection() {
   const plans = useAppStore((s) => s.persisted.plans);
   const activePlanId = useAppStore((s) => s.persisted.activePlanId);
+  const profile = useAppStore((s) => s.persisted.profile);
   const setActiveSection = useAppStore((s) => s.setActiveSection);
+  const setProfile = useAppStore((s) => s.setProfile);
   const updatePlan = useAppStore((s) => s.updatePlan);
 
-  const [now, setNow] = useState(() => Date.now());
+  const [realNow, setRealNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), TICK_MS);
+    const id = window.setInterval(() => setRealNow(Date.now()), TICK_MS);
     return () => window.clearInterval(id);
   }, []);
 
@@ -46,6 +48,46 @@ export function CookSection() {
   );
 
   const { schedule, lanes, startMs, serveMs } = usePlanSchedule(activePlan);
+
+  const autoAdvance = profile.autoAdvance;
+  const started = activePlan?.startedAt != null;
+  const pausedAt = activePlan?.pausedAt ?? null;
+  const manualStep = activePlan?.manualStep ?? 0;
+
+  // The single-cook sequence — the hands-on tasks, in cooking order.
+  const handsOn = useMemo(
+    () =>
+      schedule
+        ? schedule.tasks
+            .filter((t) => occupiesCook(t.kind))
+            .sort((a, b) => a.startOffset - b.startOffset)
+        : [],
+    [schedule],
+  );
+
+  // Effective "now": the clock in auto mode (frozen while paused), or the
+  // current manual step's position when stepping through by hand.
+  const effectiveNow = useMemo(() => {
+    if (!started || startMs === null) return realNow;
+    if (!autoAdvance) {
+      if (manualStep >= handsOn.length) return serveMs ?? realNow;
+      return startMs + handsOn[manualStep].startOffset * 1000;
+    }
+    if (pausedAt) {
+      const p = Date.parse(pausedAt);
+      if (!Number.isNaN(p)) return p;
+    }
+    return realNow;
+  }, [
+    started,
+    startMs,
+    serveMs,
+    autoAdvance,
+    manualStep,
+    handsOn,
+    pausedAt,
+    realNow,
+  ]);
 
   const windows: TaskWindow[] = useMemo(() => {
     if (!schedule || startMs === null) return [];
@@ -60,39 +102,65 @@ export function CookSection() {
     if (startMs === null || serveMs === null) {
       return { phase: 'unanchored' as const };
     }
-    if (now < startMs) {
-      const first = windows
+    if (!autoAdvance) {
+      if (manualStep >= handsOn.length) return { phase: 'done' as const };
+      const task = handsOn[manualStep];
+      return {
+        phase: 'manual' as const,
+        task,
+        step: manualStep + 1,
+        steps: handsOn.length,
+      };
+    }
+    if (effectiveNow < startMs) {
+      const first = [...windows]
         .filter((w) => occupiesCook(w.task.kind))
         .sort((a, b) => a.startMs - b.startMs)[0];
       return {
         phase: 'before' as const,
-        startsIn: (startMs - now) / 1000,
+        startsIn: (startMs - effectiveNow) / 1000,
         first: first?.task,
       };
     }
-    if (now >= serveMs) return { phase: 'done' as const };
+    if (effectiveNow >= serveMs) return { phase: 'done' as const };
     const active = windows.find(
-      (w) => occupiesCook(w.task.kind) && w.startMs <= now && now < w.endMs,
+      (w) =>
+        occupiesCook(w.task.kind) &&
+        w.startMs <= effectiveNow &&
+        effectiveNow < w.endMs,
     );
     if (active) {
       return {
         phase: 'cooking' as const,
         task: active.task,
-        leftSec: (active.endMs - now) / 1000,
+        leftSec: (active.endMs - effectiveNow) / 1000,
       };
     }
     const next = windows
-      .filter((w) => occupiesCook(w.task.kind) && w.startMs > now)
+      .filter((w) => occupiesCook(w.task.kind) && w.startMs > effectiveNow)
       .sort((a, b) => a.startMs - b.startMs)[0];
     const cooking = windows.find(
-      (w) => !occupiesCook(w.task.kind) && w.startMs <= now && now < w.endMs,
+      (w) =>
+        !occupiesCook(w.task.kind) &&
+        w.startMs <= effectiveNow &&
+        effectiveNow < w.endMs,
     );
     return {
       phase: 'waiting' as const,
-      next: next ? { task: next.task, inSec: (next.startMs - now) / 1000 } : null,
+      next: next
+        ? { task: next.task, inSec: (next.startMs - effectiveNow) / 1000 }
+        : null,
       cooking: cooking?.task,
     };
-  }, [now, startMs, serveMs, windows]);
+  }, [
+    autoAdvance,
+    manualStep,
+    handsOn,
+    effectiveNow,
+    startMs,
+    serveMs,
+    windows,
+  ]);
 
   // --- Empty states (after all hooks — CLAUDE.md: hooks before early returns) ---
 
@@ -119,25 +187,73 @@ export function CookSection() {
     );
   }
 
-  const started = activePlan.startedAt !== null;
   const planId = activePlan.id;
+  const nowIso = () => new Date().toISOString();
   const startCook = () =>
-    updatePlan(planId, (p) => ({ ...p, startedAt: new Date().toISOString() }));
+    updatePlan(planId, (p) => ({
+      ...p,
+      startedAt: nowIso(),
+      pausedAt: null,
+      manualStep: 0,
+    }));
   const stopCook = () =>
-    updatePlan(planId, (p) => ({ ...p, startedAt: null }));
+    updatePlan(planId, (p) => ({
+      ...p,
+      startedAt: null,
+      pausedAt: null,
+      manualStep: 0,
+    }));
+  const pauseCook = () =>
+    updatePlan(planId, (p) => ({ ...p, pausedAt: nowIso() }));
+  const resumeCook = () =>
+    updatePlan(planId, (p) => {
+      if (!p.startedAt || !p.pausedAt) return p;
+      const shift = Date.now() - Date.parse(p.pausedAt);
+      return {
+        ...p,
+        startedAt: new Date(Date.parse(p.startedAt) + shift).toISOString(),
+        pausedAt: null,
+      };
+    });
+  const goNext = () =>
+    updatePlan(planId, (p) => ({
+      ...p,
+      manualStep: Math.min((p.manualStep ?? 0) + 1, handsOn.length),
+    }));
 
+  const setMode = (auto: boolean) => {
+    if (auto === autoAdvance) return;
+    setProfile({ ...profile, autoAdvance: auto });
+    if (!auto && started && startMs !== null) {
+      // Entering manual — land on the task that's current right now.
+      let step = handsOn.length;
+      for (let i = 0; i < handsOn.length; i++) {
+        const endAt =
+          startMs + (handsOn[i].startOffset + handsOn[i].duration) * 1000;
+        if (realNow < endAt) {
+          step = i;
+          break;
+        }
+      }
+      updatePlan(planId, (p) => ({ ...p, manualStep: step, pausedAt: null }));
+    }
+  };
+
+  const paused = pausedAt !== null && autoAdvance;
   const colorFor = (recipeId: string) => {
     const i = lanes.findIndex((l) => l.recipeId === recipeId);
     return i >= 0 ? lineColor(i) : 'var(--color-text-muted)';
   };
-
   const ingredientsLine = (task: ScheduledTask) =>
     task.ingredients
       .map((ing) => {
-        const q = ing.quantity > 0 ? `${Math.round(ing.quantity * 10) / 10} ` : '';
+        const q =
+          ing.quantity > 0 ? `${Math.round(ing.quantity * 10) / 10} ` : '';
         return `${q}${ing.unit ? `${ing.unit} ` : ''}${ing.label}`.trim();
       })
       .join(', ');
+
+  const showNext = !autoAdvance && started && current.phase === 'manual';
 
   return (
     <div className="cook">
@@ -147,9 +263,8 @@ export function CookSection() {
             <>
               <div className="cook__bar-action">Ready when you are</div>
               <div className="cook__bar-sub">
-                Press Start to begin — serve lands {formatCountdown(
-                  schedule.totalDuration,
-                )} later.
+                Press Start — serve lands{' '}
+                {formatCountdown(schedule.totalDuration)} later.
               </div>
             </>
           )}
@@ -163,7 +278,7 @@ export function CookSection() {
               </div>
             </>
           )}
-          {current.phase === 'cooking' && (
+          {(current.phase === 'cooking' || current.phase === 'manual') && (
             <>
               <div className="cook__bar-action">
                 <span
@@ -171,8 +286,12 @@ export function CookSection() {
                   style={{ background: colorFor(current.task.recipeId) }}
                 />
                 {current.task.label}
+                {paused && <span className="cook__paused-tag">paused</span>}
               </div>
               <div className="cook__bar-sub">
+                {current.phase === 'manual'
+                  ? `Step ${current.step} of ${current.steps} · `
+                  : ''}
                 {current.task.recipeTitle}
                 {ingredientsLine(current.task)
                   ? ` · ${ingredientsLine(current.task)}`
@@ -208,12 +327,75 @@ export function CookSection() {
             <div className="cook__bar-timer-value">
               {formatCountdown(current.leftSec)}
             </div>
-            <div className="cook__bar-timer-label">left</div>
+            <div className="cook__bar-timer-label">
+              {paused ? 'paused' : 'left'}
+            </div>
+          </div>
+        )}
+        {current.phase === 'manual' && (
+          <div className="cook__bar-timer">
+            <div className="cook__bar-timer-value cook__bar-timer-value--est">
+              {formatCountdown(current.task.duration)}
+            </div>
+            <div className="cook__bar-timer-label">this step</div>
           </div>
         )}
 
+        {showNext && (
+          <button type="button" className="cook__next" onClick={goNext}>
+            Next →
+          </button>
+        )}
+
         <div className="cook__bar-controls">
-          {started ? (
+          <div className="cook__mode" role="radiogroup" aria-label="Cook flow">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={autoAdvance}
+              className={
+                autoAdvance
+                  ? 'cook__mode-opt cook__mode-opt--on'
+                  : 'cook__mode-opt'
+              }
+              onClick={() => setMode(true)}
+            >
+              Auto
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!autoAdvance}
+              className={
+                !autoAdvance
+                  ? 'cook__mode-opt cook__mode-opt--on'
+                  : 'cook__mode-opt'
+              }
+              onClick={() => setMode(false)}
+            >
+              Manual
+            </button>
+          </div>
+
+          {!started && (
+            <button
+              type="button"
+              className="cook-btn cook-btn--primary"
+              onClick={startCook}
+            >
+              ▶ Start cook now
+            </button>
+          )}
+          {started && autoAdvance && (
+            <button
+              type="button"
+              className="cook-btn"
+              onClick={paused ? resumeCook : pauseCook}
+            >
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+          )}
+          {started && (
             <>
               <button type="button" className="cook-btn" onClick={startCook}>
                 Restart
@@ -226,14 +408,6 @@ export function CookSection() {
                 Stop
               </button>
             </>
-          ) : (
-            <button
-              type="button"
-              className="cook-btn cook-btn--primary"
-              onClick={startCook}
-            >
-              ▶ Start cook now
-            </button>
           )}
         </div>
       </div>
@@ -271,7 +445,12 @@ export function CookSection() {
             </span>
           </div>
         </div>
-        <TubeMap schedule={schedule} lanes={lanes} startMs={startMs} nowMs={now} />
+        <TubeMap
+          schedule={schedule}
+          lanes={lanes}
+          startMs={startMs}
+          nowMs={effectiveNow}
+        />
       </div>
     </div>
   );

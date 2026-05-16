@@ -18,6 +18,7 @@ function defaultProfile(): Profile {
     speedMultiplier: 1,
     units: 'metric',
     defaultServings: 2,
+    autoAdvance: true,
   };
 }
 
@@ -135,6 +136,8 @@ export const useAppStore = create<AppStore>((set) => ({
         serveAt: null,
         entries: [],
         startedAt: null,
+        pausedAt: null,
+        manualStep: 0,
       };
       const persisted = {
         ...s.persisted,

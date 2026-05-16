@@ -18,6 +18,9 @@ export interface Profile {
   units: 'metric' | 'imperial';
   /** Serving count a recipe defaults to when first added to a plan. */
   defaultServings: number;
+  /** Cook flow: true = the timeline follows the clock; false = step through
+   *  tasks with a Next button at your own pace. */
+  autoAdvance: boolean;
 }
 
 export type TaskKind = 'prep' | 'active' | 'passive' | 'rest';
@@ -80,6 +83,10 @@ export interface MealPlan {
   /** ISO timestamp the cook was started ("Start cook now"). null = not started;
    *  when set, the Cook timeline is anchored to it rather than to serveAt. */
   startedAt: string | null;
+  /** ISO timestamp the cook is currently paused at, or null if running. */
+  pausedAt: string | null;
+  /** In manual advance mode, the index of the hands-on task you're on. */
+  manualStep: number;
 }
 
 /** Persisted app state. Bumped via SCHEMA_VERSION when shape changes. */
