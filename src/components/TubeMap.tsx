@@ -280,10 +280,7 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                   const x = recipe.subLaneX(task.subLane);
                   const y = stationY(task.startOffset);
                   const food = foodText(task.ingredients);
-                  const instruction =
-                    task.major && task.group
-                      ? `${task.group}: ${task.label}`
-                      : task.label;
+                  const showTitle = task.major && Boolean(task.group);
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
                       {task.major ? (
@@ -309,18 +306,43 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                           {food}
                         </text>
                       )}
-                      <text
-                        className={
-                          task.major
-                            ? 'tube__instr tube__instr--major'
-                            : 'tube__instr tube__instr--minor'
-                        }
-                        x={recipe.instrX}
-                        y={y}
-                        dominantBaseline="middle"
-                      >
-                        {instruction}
-                      </text>
+                      {showTitle ? (
+                        // Phase change: group name as a bold section title,
+                        // the actual step below it in normal weight.
+                        <text
+                          x={recipe.instrX}
+                          y={y}
+                          dominantBaseline="middle"
+                        >
+                          <tspan
+                            className="tube__instr-title"
+                            x={recipe.instrX}
+                            dy="-0.32em"
+                          >
+                            {task.group}
+                          </tspan>
+                          <tspan
+                            className="tube__instr-step"
+                            x={recipe.instrX}
+                            dy="1.28em"
+                          >
+                            {task.label}
+                          </tspan>
+                        </text>
+                      ) : (
+                        <text
+                          className={
+                            task.major
+                              ? 'tube__instr-step tube__instr-step--solo'
+                              : 'tube__instr-step tube__instr-step--minor'
+                          }
+                          x={recipe.instrX}
+                          y={y}
+                          dominantBaseline="middle"
+                        >
+                          {task.label}
+                        </text>
+                      )}
                     </g>
                   );
                 })}

@@ -102,18 +102,23 @@
   font-family: var(--font-mono);
 }
 
-.tube__instr {
+.tube__instr-title {
   fill: var(--color-text);
-}
-
-.tube__instr--major {
   font-size: 12px;
   font-weight: 700;
 }
 
-.tube__instr--minor {
+.tube__instr-step {
+  fill: var(--color-text);
   font-size: 11px;
   font-weight: 400;
+}
+
+.tube__instr-step--solo {
+  font-weight: 600;
+}
+
+.tube__instr-step--minor {
   fill: var(--color-text-muted);
 }
 
