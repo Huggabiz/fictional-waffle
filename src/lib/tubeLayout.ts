@@ -1,8 +1,9 @@
 import type { Schedule, ScheduledTask } from './scheduler';
 
 // Pure layout helpers for the tube map — no React. Two jobs:
-//  1. Lay tasks of a recipe onto sub-lanes so parallel branches don't overlap,
-//     and mark which stations are phase changes (big interchange) vs sub-steps.
+//  1. Lay tasks of a recipe onto sub-lanes that follow the recipe's BRANCH
+//     structure (a dependency chain stays on one track; a fork opens a new
+//     one), and mark phase-change stations vs sub-steps.
 //  2. Geometry for track connectors: a branch leaves the line as a 45° spur
 //     with rounded corners, the way a tube line splits.
 
@@ -22,6 +23,76 @@ export interface LaneLayout {
   subLaneCount: number;
 }
 
+/**
+ * Assign each task a sub-lane following the recipe's dependency structure: a
+ * task continues one predecessor's lane, so a chain (boil water → cook pasta)
+ * always shares a track; a second dependent of the same task forks to a fresh
+ * lane. This is structural, not time-based — branches stay visually parallel
+ * even when the single-cook schedule means they don't overlap in time.
+ */
+function structuralSubLanes(tasks: ScheduledTask[]): {
+  laneOf: Map<string, number>;
+  count: number;
+} {
+  const byId = new Map(tasks.map((t) => [t.taskId, t]));
+  const endOf = (id: string) => {
+    const t = byId.get(id);
+    return t ? t.startOffset + t.duration : 0;
+  };
+
+  // Kahn topological sort (recipes here are acyclic — cyclic ones are dropped
+  // by the scheduler), earliest-starting task first for a stable result.
+  const indeg = new Map<string, number>();
+  const succ = new Map<string, string[]>();
+  for (const t of tasks) {
+    indeg.set(t.taskId, 0);
+    succ.set(t.taskId, []);
+  }
+  for (const t of tasks) {
+    for (const dep of t.dependsOn) {
+      if (!byId.has(dep)) continue;
+      indeg.set(t.taskId, (indeg.get(t.taskId) ?? 0) + 1);
+      succ.get(dep)!.push(t.taskId);
+    }
+  }
+  const ready = tasks
+    .filter((t) => (indeg.get(t.taskId) ?? 0) === 0)
+    .map((t) => t.taskId);
+  const topo: string[] = [];
+  while (ready.length > 0) {
+    ready.sort((a, b) => byId.get(a)!.startOffset - byId.get(b)!.startOffset);
+    const id = ready.shift()!;
+    topo.push(id);
+    for (const s of succ.get(id) ?? []) {
+      indeg.set(s, (indeg.get(s) ?? 0) - 1);
+      if (indeg.get(s) === 0) ready.push(s);
+    }
+  }
+
+  const laneOf = new Map<string, number>();
+  const continued = new Set<string>(); // deps whose lane a successor already took
+  let nextLane = 0;
+  for (const id of topo) {
+    const task = byId.get(id)!;
+    const freeDeps = task.dependsOn.filter(
+      (d) => byId.has(d) && !continued.has(d),
+    );
+    if (freeDeps.length > 0) {
+      // Continue the dependency that ends latest — it flows most naturally in.
+      freeDeps.sort((a, b) => endOf(b) - endOf(a));
+      const chosen = freeDeps[0];
+      laneOf.set(id, laneOf.get(chosen)!);
+      continued.add(chosen);
+    } else {
+      laneOf.set(id, nextLane++);
+    }
+  }
+  for (const t of tasks) {
+    if (!laneOf.has(t.taskId)) laneOf.set(t.taskId, 0);
+  }
+  return { laneOf, count: Math.max(1, nextLane) };
+}
+
 export function layoutLanes(
   schedule: Schedule,
   lanes: { recipeId: string; title: string }[],
@@ -38,19 +109,7 @@ export function layoutLanes(
       (a, b) => a.startOffset - b.startOffset || b.duration - a.duration,
     );
 
-    // Greedy sub-lane assignment: a task takes the first sub-lane free at its
-    // start time, otherwise opens a new one.
-    const subLaneEnd: number[] = [];
-    const subLaneOf = new Map<string, number>();
-    for (const task of sorted) {
-      let i = subLaneEnd.findIndex((end) => end <= task.startOffset + 1);
-      if (i === -1) {
-        i = subLaneEnd.length;
-        subLaneEnd.push(0);
-      }
-      subLaneEnd[i] = task.startOffset + task.duration;
-      subLaneOf.set(task.taskId, i);
-    }
+    const { laneOf, count } = structuralSubLanes(raw);
 
     // The first task (by start) in each group is the interchange station.
     const groupFirst = new Map<string, string>();
@@ -63,7 +122,7 @@ export function layoutLanes(
     const tasks: SubLanedTask[] = sorted.map((task) => ({
       ...task,
       endOffset: task.startOffset + task.duration,
-      subLane: subLaneOf.get(task.taskId) ?? 0,
+      subLane: laneOf.get(task.taskId) ?? 0,
       major: !task.group || groupFirst.get(task.group) === task.taskId,
     }));
 
@@ -73,7 +132,7 @@ export function layoutLanes(
       laneIndex,
       tasks,
       byTaskId: new Map(tasks.map((t) => [t.taskId, t])),
-      subLaneCount: Math.max(1, subLaneEnd.length),
+      subLaneCount: count,
     };
   });
 }
