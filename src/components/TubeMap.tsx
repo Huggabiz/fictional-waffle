@@ -11,10 +11,10 @@ import './TubeMap.css';
 
 // The kitchen timeline as a vertical tube map. Time runs top → bottom. Each
 // dish is a coloured line; each task is a length of track; each instruction
-// is a station (big interchange = phase change, small tick = sub-step). The
-// food sits to the LEFT of the track, the instruction to the RIGHT. Branches
-// split off as 45° spurs with rounded corners. Hands-on track (prep/active)
-// is solid; hands-free (passive/rest) is dashed.
+// is a station (big interchange = phase change, small tick = sub-step).
+// Beside each station: the phase title (when it changes), the action in
+// bold, and the ingredients in light grey. Branches split as 45° spurs;
+// hands-on track (prep/active) is solid, hands-free (passive/rest) dashed.
 
 export const LINE_COLORS = [
   '#d8602f',
@@ -30,15 +30,14 @@ export function lineColor(index: number): string {
 }
 
 const GEO = {
-  pxPerSec: 0.7,
+  pxPerSec: 0.85,
   leftAxis: 52,
   mainStart: 56,
   bottomPad: 52,
   rightPad: 20,
-  foodGutter: 116,
-  trackPad: 22,
+  trackPad: 24,
   subLaneGap: 34,
-  instrGutter: 262,
+  instrGutter: 286,
   cornerRadius: 13,
 };
 
@@ -77,12 +76,12 @@ function formatQty(q: number): string {
   return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-function foodText(ingredients: ScheduledIngredient[]): string {
-  const parts = ingredients.map((ing) =>
-    [formatQty(ing.quantity), ing.unit, ing.label].filter(Boolean).join(' '),
-  );
-  const joined = parts.join(', ');
-  return joined.length > 26 ? `${joined.slice(0, 25)}…` : joined;
+function ingredientsText(ingredients: ScheduledIngredient[]): string {
+  return ingredients
+    .map((ing) =>
+      [formatQty(ing.quantity), ing.unit, ing.label].filter(Boolean).join(' '),
+    )
+    .join(', ');
 }
 
 export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
@@ -95,22 +94,20 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
     let bandLeft = g.leftAxis;
     const recipes = laid.map((lane) => {
       const color = lineColor(lane.laneIndex);
-      const trackLeft = bandLeft + g.foodGutter + g.trackPad;
+      const trackLeft = bandLeft + g.trackPad;
       const subLaneX = (subLane: number) => trackLeft + subLane * g.subLaneGap;
       const trackRight = subLaneX(lane.subLaneCount - 1);
       const out = {
         ...lane,
         color,
         bandLeft,
-        foodX: bandLeft + g.foodGutter - 12,
-        instrX: trackRight + 22,
+        trackLeft,
+        instrX: trackRight + 24,
         subLaneX,
       };
       bandLeft +=
-        g.foodGutter +
         g.trackPad +
         (lane.subLaneCount - 1) * g.subLaneGap +
-        g.trackPad +
         g.instrGutter;
       return out;
     });
@@ -210,7 +207,7 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
             <text
               key={`title-${r.recipeId}`}
               className="tube__recipe-title"
-              x={r.bandLeft + g.foodGutter + g.trackPad}
+              x={r.trackLeft}
               y={g.mainStart - 26}
               fill={r.color}
             >
@@ -218,46 +215,12 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
             </text>
           ))}
 
-          {/* Per recipe: connectors, then track, then stations + labels */}
+          {/* Per recipe: track segments, then connectors over them, then
+              stations + labels on top. */}
           {recipes.map((recipe) => {
             const stationY = (offset: number) => view.mainOf(offset);
             return (
               <g key={recipe.recipeId}>
-                {/* Connectors (under the track) */}
-                {recipe.tasks.flatMap((task) =>
-                  task.dependsOn.flatMap((depId) => {
-                    const dep = recipe.byTaskId.get(depId);
-                    if (!dep) return [];
-                    const pts = connectorPoints(
-                      stationY(dep.endOffset),
-                      recipe.subLaneX(dep.subLane),
-                      stationY(task.startOffset),
-                      recipe.subLaneX(task.subLane),
-                      stationY(dep.startOffset),
-                      stationY(task.endOffset),
-                    ).map((p) => ({ x: p.cross, y: p.main }));
-                    // The branch into a hands-free task (or across an idle
-                    // gap) is dashed — that's the part of the split you walk
-                    // away from.
-                    const dashed =
-                      !occupiesCook(task.kind) ||
-                      task.startOffset - dep.endOffset > 60;
-                    return [
-                      <path
-                        key={`${recipe.recipeId}:${depId}->${task.taskId}`}
-                        d={roundedPath(pts, g.cornerRadius)}
-                        fill="none"
-                        stroke={recipe.color}
-                        strokeWidth={5}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeDasharray={dashed ? '1 11' : undefined}
-                        opacity={0.9}
-                      />,
-                    ];
-                  }),
-                )}
-
                 {/* Track segments */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
@@ -282,12 +245,52 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                   );
                 })}
 
-                {/* Stations + food (left) + instruction (right) */}
+                {/* Connectors — over the track, so the forking corners show */}
+                {recipe.tasks.flatMap((task) =>
+                  task.dependsOn.flatMap((depId) => {
+                    const dep = recipe.byTaskId.get(depId);
+                    if (!dep) return [];
+                    const pts = connectorPoints(
+                      stationY(dep.endOffset),
+                      recipe.subLaneX(dep.subLane),
+                      stationY(task.startOffset),
+                      recipe.subLaneX(task.subLane),
+                      stationY(dep.startOffset),
+                      stationY(task.endOffset),
+                    ).map((p) => ({ x: p.cross, y: p.main }));
+                    const dashed =
+                      !occupiesCook(task.kind) ||
+                      task.startOffset - dep.endOffset > 60;
+                    return [
+                      <path
+                        key={`${recipe.recipeId}:${depId}->${task.taskId}`}
+                        d={roundedPath(pts, g.cornerRadius)}
+                        fill="none"
+                        stroke={recipe.color}
+                        strokeWidth={8}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeDasharray={dashed ? '2 12' : undefined}
+                      />,
+                    ];
+                  }),
+                )}
+
+                {/* Stations + labels */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
                   const y = stationY(task.startOffset);
-                  const food = foodText(task.ingredients);
-                  const showTitle = task.major && Boolean(task.group);
+                  const food = ingredientsText(task.ingredients);
+                  const lines: { text: string; kind: string }[] = [];
+                  if (task.major && task.group) {
+                    lines.push({ text: task.group, kind: 'title' });
+                  }
+                  lines.push({ text: task.label, kind: 'action' });
+                  if (food) lines.push({ text: food, kind: 'food' });
+                  const firstDy =
+                    lines.length > 1
+                      ? `${-(lines.length - 1) * 0.62}em`
+                      : '0';
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
                       {task.major ? (
@@ -302,54 +305,19 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                       ) : (
                         <circle cx={x} cy={y} r={4.5} fill={recipe.color} />
                       )}
-                      {food && (
-                        <text
-                          className="tube__food"
-                          x={recipe.foodX}
-                          y={y}
-                          textAnchor="end"
-                          dominantBaseline="middle"
-                        >
-                          {food}
-                        </text>
-                      )}
-                      {showTitle ? (
-                        // Phase change: group name as a bold section title,
-                        // the actual step below it in normal weight.
-                        <text
-                          x={recipe.instrX}
-                          y={y}
-                          dominantBaseline="middle"
-                        >
+                      <text x={recipe.instrX} y={y} dominantBaseline="middle">
+                        {lines.map((line, i) => (
                           <tspan
-                            className="tube__instr-title"
+                            key={i}
                             x={recipe.instrX}
-                            dy="-0.32em"
+                            dy={i === 0 ? firstDy : '1.25em'}
+                            className={`tube__ln tube__ln--${line.kind}`}
+                            fill={line.kind === 'title' ? recipe.color : undefined}
                           >
-                            {task.group}
+                            {line.text}
                           </tspan>
-                          <tspan
-                            className="tube__instr-step"
-                            x={recipe.instrX}
-                            dy="1.28em"
-                          >
-                            {task.label}
-                          </tspan>
-                        </text>
-                      ) : (
-                        <text
-                          className={
-                            task.major
-                              ? 'tube__instr-step tube__instr-step--solo'
-                              : 'tube__instr-step tube__instr-step--minor'
-                          }
-                          x={recipe.instrX}
-                          y={y}
-                          dominantBaseline="middle"
-                        >
-                          {task.label}
-                        </text>
-                      )}
+                        ))}
+                      </text>
                     </g>
                   );
                 })}
@@ -367,11 +335,7 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                 x2={axisRight}
                 y2={view.nowY}
               />
-              <text
-                className="tube__now-label"
-                x={10}
-                y={view.nowY - 7}
-              >
+              <text className="tube__now-label" x={10} y={view.nowY - 7}>
                 now
               </text>
             </>

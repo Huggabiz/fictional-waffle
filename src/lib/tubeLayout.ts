@@ -110,19 +110,23 @@ export function connectorPoints(
     ];
   }
   const diag = Math.abs(crossB - crossA);
-  const cornerRun = 14; // straight run each side, so corners can round
+  // Keep a straight run each side so the corners always have room to round;
+  // when space is tight the diagonal shrinks (shallower than 45°) but the
+  // corners stay rounded rather than collapsing to a sharp kink.
+  const minStraight = 9;
+  const idealStraight = 16;
   const mid = (mainA + mainB) / 2;
-  const halfSpan = diag / 2 + cornerRun;
+  const halfSpan = diag / 2 + idealStraight;
   const s = Math.max(minMain, mid - halfSpan);
   const e = Math.min(maxMain, mid + halfSpan);
-  if (e - s < 4) {
+  const available = e - s;
+  if (available < 2 * minStraight + 6) {
     return [
       { main: mainA, cross: crossA },
       { main: mainB, cross: crossB },
     ];
   }
-  const available = e - s;
-  const diagLen = Math.min(diag, Math.max(2, available - 8));
+  const diagLen = Math.min(diag, available - 2 * minStraight);
   const straight = (available - diagLen) / 2;
   return [
     { main: s, cross: crossA },

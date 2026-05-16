@@ -8,7 +8,7 @@ import { TubeMap } from '../components/TubeMap';
 import './Section.css';
 import './CookSection.css';
 
-const TICK_MS = 30_000;
+const TICK_MS = 1_000; // the now-line should creep smoothly
 
 export function CookSection() {
   const plans = useAppStore((s) => s.persisted.plans);
