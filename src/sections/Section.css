@@ -6,6 +6,10 @@
   max-width: 960px;
 }
 
+.section--wide {
+  max-width: 1100px;
+}
+
 .section__header {
   display: flex;
   flex-direction: column;
