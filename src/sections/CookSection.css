@@ -1,55 +1,90 @@
-.cook-readout {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+/* The Cook section is a single canvas — a current-task bar, then the tube
+   map filling the rest. Only the tube map scrolls; no nested page scroll. */
+
+.cook {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cook--empty {
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+/* Current-task bar */
+.cook__bar {
+  display: flex;
+  align-items: center;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
-  background: var(--color-surface-2);
-  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
 }
 
-@media (max-width: 720px) {
-  .cook-readout {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.cook__bar-main {
+  flex: 1;
+  min-width: 0;
 }
 
-.cook-readout__label {
+.cook__bar-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cook__bar-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cook__bar-sub {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cook__bar-timer {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.cook__bar-timer-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent-strong);
+  line-height: 1;
+}
+
+.cook__bar-timer-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
-  font-weight: 600;
 }
 
-.cook-readout__value {
-  margin-top: 2px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.cook-status {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-accent-strong);
-}
-
-.cook-controls {
+.cook__bar-controls {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.cook-controls__state {
-  font-size: 13px;
-  font-weight: 600;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .cook-btn {
   font-size: 13px;
   font-weight: 600;
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-radius: 999px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
@@ -66,7 +101,6 @@
   background: var(--color-accent);
   color: var(--color-accent-contrast);
   border-color: var(--color-accent);
-  font-size: 14px;
 }
 
 .cook-btn--primary:hover {
@@ -78,19 +112,54 @@
   color: var(--color-text-muted);
 }
 
-.cook-note {
+.cook__warn {
   margin: 0;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  font-style: italic;
+  padding: var(--space-2) var(--space-5);
+  font-size: 12px;
+  background: rgba(212, 68, 58, 0.12);
+  border-bottom: 1px solid rgba(212, 68, 58, 0.35);
+  color: var(--color-text);
 }
 
-.cook-warning {
-  margin: 0;
+/* Canvas — holds the tube map and the floating serve-stats HUD */
+.cook__canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3);
+}
+
+.cook__hud {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   padding: var(--space-2) var(--space-3);
-  font-size: 13px;
-  border-radius: var(--radius-sm);
-  background: rgba(212, 68, 58, 0.12);
-  border: 1px solid rgba(212, 68, 58, 0.35);
-  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: blur(3px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+
+.cook__hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: 12px;
+}
+
+.cook__hud-k {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.cook__hud-v {
+  font-weight: 600;
 }

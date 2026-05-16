@@ -2,6 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  height: 100%;
+  min-height: 0;
 }
 
 .tube__legend {
@@ -9,6 +11,7 @@
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-4);
   align-items: center;
+  flex: none;
 }
 
 .tube__legend-item {
@@ -44,12 +47,13 @@
 }
 
 .tube__scroll {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
   box-shadow: var(--shadow-sm);
-  max-height: 78vh;
 }
 
 .tube__svg {
