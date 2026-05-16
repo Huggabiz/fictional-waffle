@@ -33,6 +33,7 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [x] **Seed recipes + Explore + Cookbook + detail modal** — three built-in recipes, card grid in Explore and Cookbook, modal with ingredients + steps (coloured by kind). `useAllRecipes()` merges seeds with user recipes. Pure `criticalPathSeconds()` helper. (v0.1.5)
 - [x] **Planner v0** — editable plan name and serve time, entry list with per-entry scale and remove, "Add from your cookbook" picker grid. Crude earliest-start readout (longest single critical path) until the real scheduler lands. (v0.1.6)
 - [x] **Profile editor** — display name, units radio, proficiency segmented control mapped to speed multipliers, "10-minute prep takes ~Xm" preview. (v0.1.7)
+- [x] **Scheduler v0 + Cook timeline** — pure `lib/scheduler.ts` merges the plan's recipe DAGs into one as-late-as-possible timeline (prep scaled by proficiency, cyclic recipes skipped, cook double-booking detected). Cook renders it as an SVG timeline (lane per dish, axis, serve marker, ticking now-line) with readout + conflict warnings. Planner gets a "Cook this plan" button. (v0.2.0)
 
 ## In progress
 
@@ -56,23 +57,23 @@ So "Library" splits into Explore (discovery) + Cookbook (the user's saved set), 
 - [ ] JSON export per recipe and whole cookbook (round-trips through `normaliseShape`).
 - [ ] Servings scaling on the recipe (separate from per-plan scaling).
 
+### Scheduler (the meaty one — v0 shipped, needs the constraint solver)
+- [x] v0: merge recipe DAGs, as-late-as-possible pass, prep scaled by proficiency, conflict *detection*. (v0.2.0)
+- [ ] **Resolve the single-cook constraint** — no two `prep`/`active` tasks overlap; interleave non-critical prep into `passive`/`rest` gaps instead of just flagging the clash.
+- [ ] Scale prep durations by the plan entry's serving `scale` (more servings ⇒ more chopping; passive time unchanged).
+- [ ] Unit tests for the scheduler (it's pure — easy to test in isolation).
+
 ### Planner
-- [ ] **Scheduler** (pure module, no React/store imports):
-  - merges multiple recipe DAGs into one timeline,
-  - respects the single-cook constraint (no two `active` tasks overlapping),
-  - front-loads non-critical prep so the cook's idle time during `passive` tasks is used,
-  - applies the active profile's `speedMultiplier` to `prep` durations only.
-- [ ] Plan timeline preview (read-only SVG, left-to-right, ending at serve time).
+- [ ] Plan timeline preview (reuse the Cook `Timeline` component, read-only).
 - [ ] Save / load multiple named plans (currently one active plan at a time).
 - [ ] Serve-time presets ("tonight at 7" / "in 90 minutes").
 
 ### Cook
-- [ ] _(nothing happens here yet — drives off the Planner's scheduler output)._
-- [ ] Live timeline view (SVG, time-scaled, with a moving now-indicator).
+- [x] Static merged timeline (SVG, lane per dish, ticking now-line). (v0.2.0)
 - [ ] "Start cook" action that anchors `now` to the schedule.
 - [ ] Per-task "done" tap → marks complete and re-projects downstream.
 - [ ] "I'm here" / "I'm behind" re-anchor control → re-projects serve time forward.
-- [ ] Separate lanes for active vs passive tasks so the cook can see when they're free.
+- [ ] Separate lanes for active vs passive so the cook can see when they're free.
 - [ ] Local notifications when a passive task is about to end / has ended.
 - [ ] Keep-screen-awake hint (Wake Lock API where supported).
 

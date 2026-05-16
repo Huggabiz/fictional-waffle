@@ -33,6 +33,11 @@
   color: var(--color-text-muted);
 }
 
+.planner-cook-cta {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .section__body {
   display: flex;
   flex-direction: column;

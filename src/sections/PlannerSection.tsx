@@ -64,6 +64,18 @@ export function PlannerSection() {
           <PlanComposer plan={activePlan} recipesById={recipesById} />
         )}
 
+        {activePlan && activePlan.entries.length > 0 && (
+          <div className="planner-cook-cta">
+            <button
+              type="button"
+              className="empty-state__action"
+              onClick={() => setActiveSection('cook')}
+            >
+              Cook this plan →
+            </button>
+          </div>
+        )}
+
         {activePlan && (
           <>
             <h2 className="section__sub-title">Add from your cookbook</h2>
