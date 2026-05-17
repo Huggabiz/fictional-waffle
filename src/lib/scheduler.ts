@@ -65,6 +65,12 @@ export function occupiesCook(kind: TaskKind): boolean {
   return kind === 'prep' || kind === 'active';
 }
 
+/** Cost (in lead-seconds) of leaving the dish you're working on. A task from
+ *  another recipe is only chosen over a same-recipe one when it's at least
+ *  this much more serve-critical — so the cook isn't sent flitting between
+ *  dishes just to do ordinary prep. */
+const RECIPE_SWITCH_PENALTY = 900;
+
 function hasCycle(recipe: Recipe): boolean {
   const byId = new Map(recipe.tasks.map((t) => [t.id, t]));
   const state = new Map<string, 1 | 2>(); // 1 = visiting, 2 = done
@@ -198,15 +204,20 @@ export function buildSchedule(
   let lastKind: TaskKind | null = null;
 
   while (ready.length > 0) {
-    // Most serve-critical first (smallest required lead), then cluster by the
-    // dish and the kind of task we just did, then longer tasks first.
+    // Pick the next task by a cost in lead-seconds: how soon it needs to
+    // happen (smaller = more serve-critical), PLUS a flat penalty for
+    // leaving the dish we're currently on. Staying on a recipe is therefore
+    // the default — we only jump to another dish when something over there
+    // is more than RECIPE_SWITCH_PENALTY seconds more urgent. Within a tie,
+    // cluster by task kind, then longer tasks first.
     ready.sort((a, b) => {
-      const la = requiredEndLead(a, nodes);
-      const lb = requiredEndLead(b, nodes);
-      if (la !== lb) return la - lb;
-      const sameDishA = a.recipeId === lastRecipeId ? 0 : 1;
-      const sameDishB = b.recipeId === lastRecipeId ? 0 : 1;
-      if (sameDishA !== sameDishB) return sameDishA - sameDishB;
+      const costA =
+        requiredEndLead(a, nodes) +
+        (a.recipeId === lastRecipeId ? 0 : RECIPE_SWITCH_PENALTY);
+      const costB =
+        requiredEndLead(b, nodes) +
+        (b.recipeId === lastRecipeId ? 0 : RECIPE_SWITCH_PENALTY);
+      if (costA !== costB) return costA - costB;
       const sameKindA = a.task.kind === lastKind ? 0 : 1;
       const sameKindB = b.task.kind === lastKind ? 0 : 1;
       if (sameKindA !== sameKindB) return sameKindA - sameKindB;
