@@ -30,20 +30,25 @@
 .tube__legend-line {
   display: inline-block;
   width: 22px;
-  height: 6px;
-  border-radius: 999px;
+  height: 8px;
+  border-radius: 2px;
 }
 
-.tube__legend-line--solid {
+.tube__legend-line--focus {
   background: var(--color-text-muted);
 }
 
-.tube__legend-line--dashed {
+.tube__legend-line--monitor {
   background: repeating-linear-gradient(
     to right,
-    var(--color-text-muted) 0 3px,
-    transparent 3px 7px
+    var(--color-text-muted) 0 6px,
+    transparent 6px 12px
   );
+}
+
+.tube__legend-line--dormant {
+  background: var(--color-surface);
+  border: 1.6px solid var(--color-text-muted);
 }
 
 .tube__scroll {

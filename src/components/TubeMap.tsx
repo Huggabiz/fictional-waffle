@@ -7,14 +7,26 @@ import {
   roundedPath,
 } from '../lib/tubeLayout';
 import { formatDuration } from '../lib/recipeMetrics';
+import type { TaskKind } from '../types';
 import './TubeMap.css';
 
 // The kitchen timeline as a vertical tube map. Time runs top → bottom. Each
 // dish is a coloured line; each task is a length of track; each instruction
 // is a station (big interchange = phase change, small tick = sub-step).
 // Beside each station: the phase title (when it changes), the action in
-// bold, and the ingredients in light grey. Branches split as 45° spurs;
-// hands-on track (prep/active) is solid, hands-free (passive/rest) dashed.
+// bold, and the ingredients in light grey. Branches split as 45° spurs.
+//
+// Three track styles say how much the task needs the cook:
+//  - focus   (prep/active) — solid filled track; you're hands-on.
+//  - monitor (passive)     — dashed track; a pot on the heat, stay aware.
+//  - dormant (rest)        — hollow outlined track; left to its own devices.
+const DASH = '9 7';
+
+function trackStyle(kind: TaskKind): 'focus' | 'monitor' | 'dormant' {
+  if (kind === 'prep' || kind === 'active') return 'focus';
+  if (kind === 'passive') return 'monitor';
+  return 'dormant';
+}
 
 export const LINE_COLORS = [
   '#d8602f',
@@ -159,12 +171,16 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
           </span>
         ))}
         <span className="tube__legend-item tube__legend-item--note">
-          <span className="tube__legend-line tube__legend-line--solid" />
-          hands-on
+          <span className="tube__legend-line tube__legend-line--focus" />
+          Focus
         </span>
         <span className="tube__legend-item tube__legend-item--note">
-          <span className="tube__legend-line tube__legend-line--dashed" />
-          hands-free
+          <span className="tube__legend-line tube__legend-line--monitor" />
+          Monitor
+        </span>
+        <span className="tube__legend-item tube__legend-item--note">
+          <span className="tube__legend-line tube__legend-line--dormant" />
+          Dormant
         </span>
       </div>
 
@@ -232,23 +248,45 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                 {/* Track segments */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
-                  const handsFree = !occupiesCook(task.kind);
+                  const y1 = stationY(task.startOffset);
+                  const y2 = stationY(task.endOffset);
+                  const style = trackStyle(task.kind);
+                  const title = (
+                    <title>
+                      {task.label} · {task.kind} ·{' '}
+                      {formatDuration(task.duration)}
+                    </title>
+                  );
+                  if (style === 'dormant') {
+                    // Hollow outlined track — left to its own devices.
+                    return (
+                      <rect
+                        key={`seg-${recipe.recipeId}:${task.taskId}`}
+                        x={x - 4}
+                        y={y1}
+                        width={8}
+                        height={Math.max(2, y2 - y1)}
+                        fill="var(--color-surface)"
+                        stroke={recipe.color}
+                        strokeWidth={1.8}
+                      >
+                        {title}
+                      </rect>
+                    );
+                  }
                   return (
                     <line
                       key={`seg-${recipe.recipeId}:${task.taskId}`}
                       x1={x}
-                      y1={stationY(task.startOffset)}
+                      y1={y1}
                       x2={x}
-                      y2={stationY(task.endOffset)}
+                      y2={y2}
                       stroke={recipe.color}
                       strokeWidth={8}
-                      strokeLinecap="round"
-                      strokeDasharray={handsFree ? '2 12' : undefined}
+                      strokeLinecap="butt"
+                      strokeDasharray={style === 'monitor' ? DASH : undefined}
                     >
-                      <title>
-                        {task.label} · {task.kind} ·{' '}
-                        {formatDuration(task.duration)}
-                      </title>
+                      {title}
                     </line>
                   );
                 })}
@@ -276,9 +314,9 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                         fill="none"
                         stroke={recipe.color}
                         strokeWidth={8}
-                        strokeLinecap="round"
+                        strokeLinecap="butt"
                         strokeLinejoin="round"
-                        strokeDasharray={dashed ? '2 12' : undefined}
+                        strokeDasharray={dashed ? DASH : undefined}
                       />,
                     ];
                   }),
@@ -317,7 +355,16 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                           strokeWidth={3.5}
                         />
                       ) : (
-                        <circle cx={x} cy={y} r={4.5} fill={recipe.color} />
+                        // Minor stop — a tick across the track, drawn on top.
+                        <line
+                          x1={x - 10}
+                          y1={y}
+                          x2={x + 10}
+                          y2={y}
+                          stroke={recipe.color}
+                          strokeWidth={3.5}
+                          strokeLinecap="butt"
+                        />
                       )}
                       <text
                         x={labelX}
