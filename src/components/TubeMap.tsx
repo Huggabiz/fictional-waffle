@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import type { Schedule, ScheduledIngredient } from '../lib/scheduler';
-import { occupiesCook } from '../lib/scheduler';
 import {
   connectorPoints,
   layoutLanes,
@@ -291,32 +290,81 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
                   );
                 })}
 
-                {/* Connectors — over the track, so the forking corners show */}
+                {/* Connectors — over the track. A real idle gap between two
+                    of a dish's steps is the dish sitting DORMANT (hollow), not
+                    monitored: the chopped tomatoes aren't going anywhere. */}
                 {recipe.tasks.flatMap((task) =>
                   task.dependsOn.flatMap((depId) => {
                     const dep = recipe.byTaskId.get(depId);
                     if (!dep) return [];
-                    const pts = connectorPoints(
-                      stationY(dep.endOffset),
-                      recipe.subLaneX(dep.subLane),
-                      stationY(task.startOffset),
-                      recipe.subLaneX(task.subLane),
-                      stationY(dep.startOffset),
-                      stationY(task.endOffset),
-                    ).map((p) => ({ x: p.cross, y: p.main }));
-                    const dashed =
-                      !occupiesCook(task.kind) ||
-                      task.startOffset - dep.endOffset > 60;
+                    const dormant = task.startOffset - dep.endOffset > 45;
+                    const sameLane = dep.subLane === task.subLane;
+                    const key = `${recipe.recipeId}:${depId}->${task.taskId}`;
+                    const depX = recipe.subLaneX(dep.subLane);
+                    const y1 = stationY(dep.endOffset);
+                    const y2 = stationY(task.startOffset);
+
+                    if (dormant && sameLane) {
+                      // A straight idle stretch — hollow outlined track.
+                      return [
+                        <rect
+                          key={key}
+                          x={depX - 4}
+                          y={y1}
+                          width={8}
+                          height={Math.max(2, y2 - y1)}
+                          fill="var(--color-surface)"
+                          stroke={recipe.color}
+                          strokeWidth={1.8}
+                        />,
+                      ];
+                    }
+
+                    const d = roundedPath(
+                      connectorPoints(
+                        y1,
+                        depX,
+                        y2,
+                        recipe.subLaneX(task.subLane),
+                        stationY(dep.startOffset),
+                        stationY(task.endOffset),
+                      ).map((p) => ({ x: p.cross, y: p.main })),
+                      g.cornerRadius,
+                    );
+
+                    if (dormant) {
+                      // Cross-lane idle stretch — hollowed by stacking a
+                      // surface-coloured inner stroke over the coloured one.
+                      return [
+                        <path
+                          key={`${key}-o`}
+                          d={d}
+                          fill="none"
+                          stroke={recipe.color}
+                          strokeWidth={8}
+                          strokeLinecap="butt"
+                          strokeLinejoin="round"
+                        />,
+                        <path
+                          key={`${key}-i`}
+                          d={d}
+                          fill="none"
+                          stroke="var(--color-surface)"
+                          strokeWidth={5}
+                          strokeLinecap="butt"
+                          strokeLinejoin="round"
+                        />,
+                      ];
+                    }
                     return [
                       <path
-                        key={`${recipe.recipeId}:${depId}->${task.taskId}`}
-                        d={roundedPath(pts, g.cornerRadius)}
+                        key={key}
+                        d={d}
                         fill="none"
                         stroke={recipe.color}
                         strokeWidth={8}
                         strokeLinecap="butt"
                         strokeLinejoin="round"
-                        strokeDasharray={dashed ? DASH : undefined}
                       />,
                     ];
                   }),
