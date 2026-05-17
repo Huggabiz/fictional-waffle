@@ -181,6 +181,21 @@ export function CookSection() {
     realNow,
   ]);
 
+  // The task the canvas should centre on — it re-centres when this changes
+  // (a Next press, or an auto-advance), while leaving free scrolling alone.
+  const focusTaskId = useMemo(() => {
+    if (current.phase === 'cooking' || current.phase === 'manual') {
+      return `${current.task.recipeId}::${current.task.taskId}`;
+    }
+    if (current.phase === 'waiting' && current.next) {
+      return `${current.next.task.recipeId}::${current.next.task.taskId}`;
+    }
+    if (current.phase === 'before' && current.first) {
+      return `${current.first.recipeId}::${current.first.taskId}`;
+    }
+    return null;
+  }, [current]);
+
   // --- Empty states (after all hooks — CLAUDE.md: hooks before early returns) ---
 
   if (!activePlan) {
@@ -352,6 +367,7 @@ export function CookSection() {
           lanes={lanes}
           startMs={startMs}
           nowMs={effectiveNow}
+          focusTaskId={focusTaskId}
         />
       </div>
 
@@ -494,17 +510,8 @@ export function CookSection() {
             {paused ? 'Resume' : 'Pause'}
           </button>
         )}
-        {started && (
-          <button
-            type="button"
-            className="cook-btn cook-btn--ghost"
-            onClick={stopCook}
-          >
-            Stop
-          </button>
-        )}
 
-        {/* Restart and the Auto/Manual switch tuck behind the expander. */}
+        {/* Restart, Stop and the Auto/Manual switch tuck behind the expander. */}
         <div className="cook__more">
           <button
             type="button"
@@ -560,6 +567,13 @@ export function CookSection() {
                     onClick={startCook}
                   >
                     Restart
+                  </button>
+                  <button
+                    type="button"
+                    className="cook-btn cook-btn--ghost"
+                    onClick={stopCook}
+                  >
+                    Stop
                   </button>
                 </div>
               )}

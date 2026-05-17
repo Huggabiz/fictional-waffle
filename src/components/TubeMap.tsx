@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { Schedule, ScheduledIngredient } from '../lib/scheduler';
 import {
   connectorPoints,
@@ -64,6 +64,8 @@ interface TubeMapProps {
   startMs: number | null;
   /** Current time in ms — drives the "you are here" line. */
   nowMs: number;
+  /** `recipeId::taskId` to scroll-centre on when it changes. */
+  focusTaskId?: string | null;
 }
 
 function tickIntervalSec(totalSec: number): number {
@@ -95,7 +97,14 @@ function ingredientsText(ingredients: ScheduledIngredient[]): string {
     .join(', ');
 }
 
-export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
+export function TubeMap({
+  schedule,
+  lanes,
+  startMs,
+  nowMs,
+  focusTaskId,
+}: TubeMapProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const view = useMemo(() => {
     const g = GEO;
     const total = Math.max(schedule.totalDuration, 60);
@@ -154,8 +163,34 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
         ? mainOf(nowOffset)
         : null;
 
-    return { g, recipes, width, height, ticks, serveY, nowY, mainOf };
+    const stationPos = new Map<string, { x: number; y: number }>();
+    for (const r of recipes) {
+      for (const t of r.tasks) {
+        stationPos.set(`${r.recipeId}::${t.taskId}`, {
+          x: r.subLaneX(t.subLane),
+          y: mainOf(t.startOffset),
+        });
+      }
+    }
+
+    return { g, recipes, width, height, ticks, serveY, nowY, mainOf, stationPos };
   }, [schedule, lanes, startMs, nowMs]);
+
+  // Re-centre the canvas on the focused task whenever it changes (a Next
+  // press, or an auto-advance) — not on every now-tick, so the cook can
+  // still pan around freely between advances.
+  useEffect(() => {
+    if (!focusTaskId) return;
+    const pos = view.stationPos.get(focusTaskId);
+    const el = scrollRef.current;
+    if (!pos || !el) return;
+    el.scrollTo({
+      left: pos.x - el.clientWidth / 2,
+      top: pos.y - el.clientHeight / 2,
+      behavior: 'smooth',
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskId]);
 
   const { g, recipes, width, height } = view;
   const axisRight = width - g.rightPad;
@@ -183,7 +218,7 @@ export function TubeMap({ schedule, lanes, startMs, nowMs }: TubeMapProps) {
         </span>
       </div>
 
-      <div className="tube__scroll">
+      <div className="tube__scroll" ref={scrollRef}>
         <svg
           className="tube__svg"
           width={width}
