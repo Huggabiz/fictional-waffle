@@ -211,12 +211,20 @@ export function buildSchedule(
     // is more than RECIPE_SWITCH_PENALTY seconds more urgent. Within a tie,
     // cluster by task kind, then longer tasks first.
     ready.sort((a, b) => {
-      const costA =
-        requiredEndLead(a, nodes) +
-        (a.recipeId === lastRecipeId ? 0 : RECIPE_SWITCH_PENALTY);
-      const costB =
-        requiredEndLead(b, nodes) +
-        (b.recipeId === lastRecipeId ? 0 : RECIPE_SWITCH_PENALTY);
+      // The switch penalty exists only to stop the COOK flitting between
+      // dishes — so it applies to hands-on tasks. Passive/rest tasks (oven,
+      // simmer, resting) don't occupy the cook, so they carry no penalty and
+      // are free to be sequenced by urgency, overlapping other dishes' work.
+      const penaltyA =
+        occupiesCook(a.task.kind) && a.recipeId !== lastRecipeId
+          ? RECIPE_SWITCH_PENALTY
+          : 0;
+      const penaltyB =
+        occupiesCook(b.task.kind) && b.recipeId !== lastRecipeId
+          ? RECIPE_SWITCH_PENALTY
+          : 0;
+      const costA = requiredEndLead(a, nodes) + penaltyA;
+      const costB = requiredEndLead(b, nodes) + penaltyB;
       if (costA !== costB) return costA - costB;
       const sameKindA = a.task.kind === lastKind ? 0 : 1;
       const sameKindB = b.task.kind === lastKind ? 0 : 1;
@@ -237,8 +245,12 @@ export function buildSchedule(
     if (occupiesCook(node.task.kind)) {
       booked.push({ lo: node.endLead, hi: node.startLead });
     }
-    lastRecipeId = node.recipeId;
-    lastKind = node.task.kind;
+    // Only a hands-on task changes "the dish the cook is on" — placing a
+    // passive task (left to cook itself) shouldn't reset the clustering.
+    if (occupiesCook(node.task.kind)) {
+      lastRecipeId = node.recipeId;
+      lastKind = node.task.kind;
+    }
 
     for (const predId of node.predecessors) {
       const pred = nodes.get(predId);
