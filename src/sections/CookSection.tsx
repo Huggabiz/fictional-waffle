@@ -331,13 +331,6 @@ export function CookSection() {
   return (
     <div className="cook">
       <div className="cook__canvas">
-        <button
-          type="button"
-          className="cook__exit"
-          onClick={() => setActiveSection('planner')}
-        >
-          ‹ Exit kitchen
-        </button>
         <div className="cook__hud" aria-label="Serve stats">
           <div className="cook__hud-row">
             <span className="cook__hud-k">Serve</span>

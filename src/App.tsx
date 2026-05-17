@@ -28,6 +28,7 @@ function renderSection(id: SectionId) {
 
 export function App() {
   const active = useAppStore((s) => s.activeSection);
+  const setActiveSection = useAppStore((s) => s.setActiveSection);
 
   return (
     <div className="app">
@@ -36,6 +37,15 @@ export function App() {
           <img src="./waffle.svg" alt="" className="app__logo" />
           <span className="app__title">Fictional Waffle</span>
         </div>
+        {active === 'cook' && (
+          <button
+            type="button"
+            className="app__exit"
+            onClick={() => setActiveSection('planner')}
+          >
+            ‹ Exit kitchen
+          </button>
+        )}
         <div className="app__toolbar-right">
           <VersionBadge />
           <UserMenu />
