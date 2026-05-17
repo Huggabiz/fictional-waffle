@@ -494,8 +494,17 @@ export function CookSection() {
             {paused ? 'Resume' : 'Pause'}
           </button>
         )}
+        {started && (
+          <button
+            type="button"
+            className="cook-btn cook-btn--ghost"
+            onClick={stopCook}
+          >
+            Stop
+          </button>
+        )}
 
-        {/* Restart / Auto-Manual / Stop tuck behind the expander. */}
+        {/* Restart and the Auto/Manual switch tuck behind the expander. */}
         <div className="cook__more">
           <button
             type="button"
@@ -551,13 +560,6 @@ export function CookSection() {
                     onClick={startCook}
                   >
                     Restart
-                  </button>
-                  <button
-                    type="button"
-                    className="cook-btn cook-btn--ghost"
-                    onClick={stopCook}
-                  >
-                    Stop
                   </button>
                 </div>
               )}

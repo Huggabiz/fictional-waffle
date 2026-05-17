@@ -35,7 +35,7 @@ export const SEED_RECIPES: Recipe[] = [
       { id: 'g1', label: 'Mince the garlic', kind: 'prep', baselineSeconds: 60, dependsOn: [], group: 'Prep prawns & garlic', ingredientIds: ['i3'] },
       { id: 'g2', label: 'Peel & devein the prawns', kind: 'prep', baselineSeconds: 150, dependsOn: ['g1'], group: 'Prep prawns & garlic', ingredientIds: ['i2'] },
       { id: 'g3', label: 'Pat prawns dry, season', kind: 'prep', baselineSeconds: 60, dependsOn: ['g2'], group: 'Prep prawns & garlic', ingredientIds: ['i8'] },
-      { id: 'w1', label: 'Boil a pan of salted water', kind: 'active', baselineSeconds: 120, dependsOn: [], group: 'Cook the pasta', ingredientIds: [] },
+      { id: 'w1', label: 'Boil a pan of salted water', kind: 'passive', baselineSeconds: 120, dependsOn: [], group: 'Cook the pasta', ingredientIds: [] },
       { id: 'w2', label: 'Cook the spaghetti', kind: 'passive', baselineSeconds: 600, dependsOn: ['w1'], group: 'Cook the pasta', ingredientIds: ['i1'] },
       { id: 'c1', label: 'Heat pan, melt the butter', kind: 'active', baselineSeconds: 120, dependsOn: ['g3'], ingredientIds: ['i4'] },
       { id: 'c2', label: 'Sear the prawns', kind: 'active', baselineSeconds: 180, dependsOn: ['c1'], ingredientIds: ['i2'] },
