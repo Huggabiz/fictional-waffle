@@ -42,7 +42,7 @@ export function App() {
         </div>
       </header>
       <div className="app__body">
-        <Nav />
+        {active !== 'cook' && <Nav />}
         <main className="app__main">{renderSection(active)}</main>
       </div>
       <RecipeDetailModal />

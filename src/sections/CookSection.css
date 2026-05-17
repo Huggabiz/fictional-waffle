@@ -1,5 +1,5 @@
-/* The Cook section is a single canvas — a current-task bar, then the tube
-   map filling the rest. Only the tube map scrolls; no nested page scroll. */
+/* The Cook section is a single canvas — the tube map fills the screen, with
+   the current-step bar pinned to the bottom (nearest the thumb). */
 
 .cook {
   height: 100%;
@@ -14,197 +14,33 @@
   padding: var(--space-6);
 }
 
-/* Current-task bar */
-.cook__bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
-}
-
-.cook__bar-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.cook__bar-action {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.cook__bar-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.cook__bar-sub {
-  margin-top: 2px;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cook__bar-timer {
-  text-align: right;
-  flex-shrink: 0;
-}
-
-.cook__bar-timer-value {
-  font-size: 26px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-accent-strong);
-  line-height: 1;
-}
-
-.cook__bar-timer-value--over {
-  color: #d4443a;
-}
-
-.cook__steps {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.cook__prev {
-  font-size: 13px;
-  font-weight: 600;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  cursor: pointer;
-}
-
-.cook__prev:hover {
-  background: var(--color-surface-2);
-  color: var(--color-text);
-}
-
-.cook__paused-tag {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-.cook__next {
-  flex-shrink: 0;
-  font-size: 18px;
-  font-weight: 700;
-  padding: var(--space-3) var(--space-6);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  cursor: pointer;
-  transition: background 120ms ease;
-}
-
-.cook__next:hover {
-  background: var(--color-accent-strong);
-  border-color: var(--color-accent-strong);
-}
-
-.cook__mode {
-  display: inline-flex;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.cook__mode-opt {
-  font-size: 12px;
-  font-weight: 600;
-  padding: var(--space-1) var(--space-3);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
-  border: 0;
-  cursor: pointer;
-}
-
-.cook__mode-opt--on {
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-}
-
-.cook__bar-timer-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--color-text-muted);
-}
-
-.cook__bar-controls {
-  display: flex;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
-.cook-btn {
-  font-size: 13px;
-  font-weight: 600;
-  padding: var(--space-2) var(--space-3);
-  border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease;
-}
-
-.cook-btn:hover {
-  background: var(--color-surface-2);
-}
-
-.cook-btn--primary {
-  background: var(--color-accent);
-  color: var(--color-accent-contrast);
-  border-color: var(--color-accent);
-}
-
-.cook-btn--primary:hover {
-  background: var(--color-accent-strong);
-  border-color: var(--color-accent-strong);
-}
-
-.cook-btn--ghost {
-  color: var(--color-text-muted);
-}
-
-.cook__warn {
-  margin: 0;
-  padding: var(--space-2) var(--space-5);
-  font-size: 12px;
-  background: rgba(212, 68, 58, 0.12);
-  border-bottom: 1px solid rgba(212, 68, 58, 0.35);
-  color: var(--color-text);
-}
-
-/* Canvas — holds the tube map and the floating serve-stats HUD */
+/* Canvas — the tube map, plus the floating exit button and serve HUD */
 .cook__canvas {
   position: relative;
   flex: 1;
   min-height: 0;
   padding: var(--space-3);
+}
+
+.cook__exit {
+  position: absolute;
+  top: var(--space-4);
+  left: var(--space-4);
+  z-index: 6;
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: blur(3px);
+  color: var(--color-text);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.cook__exit:hover {
+  background: var(--color-surface-2);
 }
 
 .cook__hud {
@@ -240,4 +76,260 @@
 
 .cook__hud-v {
   font-weight: 600;
+}
+
+.cook__warn {
+  margin: 0;
+  padding: var(--space-2) var(--space-5);
+  font-size: 12px;
+  background: rgba(212, 68, 58, 0.12);
+  border-top: 1px solid rgba(212, 68, 58, 0.35);
+  color: var(--color-text);
+}
+
+/* Current-step bar — bottom-pinned, generous on desktop */
+.cook__bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: 0 -2px 8px rgba(40, 26, 8, 0.06);
+}
+
+.cook__bar-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.cook__bar-action {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cook__bar-dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cook__bar-sub {
+  margin-top: 3px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cook__paused-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.cook__bar-timer {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.cook__bar-timer-value {
+  font-size: 34px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent-strong);
+  line-height: 1;
+}
+
+.cook__bar-timer-value--over {
+  color: #d4443a;
+}
+
+.cook__bar-timer-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.cook__steps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.cook__next {
+  font-size: 20px;
+  font-weight: 700;
+  padding: var(--space-3) var(--space-6);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.cook__next:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.cook__prev {
+  font-size: 14px;
+  font-weight: 600;
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.cook__prev:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.cook-btn {
+  font-size: 13px;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.cook-btn:hover {
+  background: var(--color-surface-2);
+}
+
+.cook-btn--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  border-color: var(--color-accent);
+  font-size: 15px;
+  padding: var(--space-3) var(--space-5);
+}
+
+.cook-btn--primary:hover {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+}
+
+.cook-btn--ghost {
+  color: var(--color-text-muted);
+}
+
+/* Expander for the secondary controls */
+.cook__more {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.cook__more-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.cook__more-btn:hover {
+  background: var(--color-surface-2);
+}
+
+.cook__more-panel {
+  position: absolute;
+  bottom: calc(100% + var(--space-3));
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+}
+
+.cook__more-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cook__more-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.cook__mode {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.cook__mode-opt {
+  font-size: 12px;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 0;
+  cursor: pointer;
+}
+
+.cook__mode-opt--on {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+
+/* Phone — a compact banner across the bottom */
+@media (max-width: 720px) {
+  .cook__bar {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3);
+  }
+  .cook__bar-action {
+    font-size: 15px;
+  }
+  .cook__bar-sub {
+    font-size: 12px;
+  }
+  .cook__bar-timer-value {
+    font-size: 24px;
+  }
+  .cook__next {
+    font-size: 16px;
+    padding: var(--space-2) var(--space-4);
+  }
+  .cook__prev {
+    font-size: 13px;
+    padding: var(--space-2);
+  }
 }

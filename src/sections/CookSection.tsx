@@ -37,6 +37,7 @@ export function CookSection() {
   const updatePlan = useAppStore((s) => s.updatePlan);
 
   const [realNow, setRealNow] = useState(() => Date.now());
+  const [showMore, setShowMore] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setRealNow(Date.now()), TICK_MS);
     return () => window.clearInterval(id);
@@ -314,6 +315,55 @@ export function CookSection() {
 
   return (
     <div className="cook">
+      <div className="cook__canvas">
+        <button
+          type="button"
+          className="cook__exit"
+          onClick={() => setActiveSection('planner')}
+        >
+          ‹ Exit kitchen
+        </button>
+        <div className="cook__hud" aria-label="Serve stats">
+          <div className="cook__hud-row">
+            <span className="cook__hud-k">Serve</span>
+            <span className="cook__hud-v">
+              {serveMs !== null
+                ? formatServeAt(new Date(serveMs).toISOString())
+                : 'Not set'}
+            </span>
+          </div>
+          <div className="cook__hud-row">
+            <span className="cook__hud-k">Start</span>
+            <span className="cook__hud-v">
+              {startMs !== null
+                ? formatServeAt(new Date(startMs).toISOString())
+                : '—'}
+            </span>
+          </div>
+          <div className="cook__hud-row">
+            <span className="cook__hud-k">Total</span>
+            <span className="cook__hud-v">
+              {formatDuration(schedule.totalDuration)}
+            </span>
+          </div>
+        </div>
+        <TubeMap
+          schedule={schedule}
+          lanes={lanes}
+          startMs={startMs}
+          nowMs={effectiveNow}
+        />
+      </div>
+
+      {schedule.cyclicRecipeIds.length > 0 && (
+        <p className="cook__warn">
+          {schedule.cyclicRecipeIds.length} recipe
+          {schedule.cyclicRecipeIds.length === 1 ? '' : 's'} skipped — a loop in
+          their task steps.
+        </p>
+      )}
+
+      {/* Current-step bar — pinned to the bottom, nearest the thumb. */}
       <div className="cook__bar">
         <div className="cook__bar-main">
           {current.phase === 'unanchored' && (
@@ -426,110 +476,94 @@ export function CookSection() {
           </div>
         )}
 
-        <div className="cook__bar-controls">
-          <div className="cook__mode" role="radiogroup" aria-label="Cook flow">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={autoAdvance}
-              className={
-                autoAdvance
-                  ? 'cook__mode-opt cook__mode-opt--on'
-                  : 'cook__mode-opt'
-              }
-              onClick={() => setMode(true)}
-            >
-              Auto
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!autoAdvance}
-              className={
-                !autoAdvance
-                  ? 'cook__mode-opt cook__mode-opt--on'
-                  : 'cook__mode-opt'
-              }
-              onClick={() => setMode(false)}
-            >
-              Manual
-            </button>
-          </div>
+        {!started && (
+          <button
+            type="button"
+            className="cook-btn cook-btn--primary"
+            onClick={startCook}
+          >
+            ▶ Start cook now
+          </button>
+        )}
+        {started && autoAdvance && (
+          <button
+            type="button"
+            className="cook-btn"
+            onClick={paused ? resumeCook : pauseCook}
+          >
+            {paused ? 'Resume' : 'Pause'}
+          </button>
+        )}
 
-          {!started && (
-            <button
-              type="button"
-              className="cook-btn cook-btn--primary"
-              onClick={startCook}
-            >
-              ▶ Start cook now
-            </button>
-          )}
-          {started && autoAdvance && (
-            <button
-              type="button"
-              className="cook-btn"
-              onClick={paused ? resumeCook : pauseCook}
-            >
-              {paused ? 'Resume' : 'Pause'}
-            </button>
-          )}
-          {started && (
-            <>
-              <button type="button" className="cook-btn" onClick={startCook}>
-                Restart
-              </button>
-              <button
-                type="button"
-                className="cook-btn cook-btn--ghost"
-                onClick={stopCook}
-              >
-                Stop
-              </button>
-            </>
+        {/* Restart / Auto-Manual / Stop tuck behind the expander. */}
+        <div className="cook__more">
+          <button
+            type="button"
+            className="cook__more-btn"
+            aria-label="More controls"
+            aria-expanded={showMore}
+            onClick={() => setShowMore((v) => !v)}
+          >
+            ⋯
+          </button>
+          {showMore && (
+            <div className="cook__more-panel">
+              <div className="cook__more-row">
+                <span className="cook__more-label">Flow</span>
+                <div
+                  className="cook__mode"
+                  role="radiogroup"
+                  aria-label="Cook flow"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={autoAdvance}
+                    className={
+                      autoAdvance
+                        ? 'cook__mode-opt cook__mode-opt--on'
+                        : 'cook__mode-opt'
+                    }
+                    onClick={() => setMode(true)}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!autoAdvance}
+                    className={
+                      !autoAdvance
+                        ? 'cook__mode-opt cook__mode-opt--on'
+                        : 'cook__mode-opt'
+                    }
+                    onClick={() => setMode(false)}
+                  >
+                    Manual
+                  </button>
+                </div>
+              </div>
+              {started && (
+                <div className="cook__more-row">
+                  <button
+                    type="button"
+                    className="cook-btn"
+                    onClick={startCook}
+                  >
+                    Restart
+                  </button>
+                  <button
+                    type="button"
+                    className="cook-btn cook-btn--ghost"
+                    onClick={stopCook}
+                  >
+                    Stop
+                  </button>
+                </div>
+              )}
+            </div>
           )}
         </div>
-      </div>
-
-      {schedule.cyclicRecipeIds.length > 0 && (
-        <p className="cook__warn">
-          {schedule.cyclicRecipeIds.length} recipe
-          {schedule.cyclicRecipeIds.length === 1 ? '' : 's'} skipped — a loop in
-          their task steps.
-        </p>
-      )}
-
-      <div className="cook__canvas">
-        <div className="cook__hud" aria-label="Serve stats">
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Serve</span>
-            <span className="cook__hud-v">
-              {serveMs !== null
-                ? formatServeAt(new Date(serveMs).toISOString())
-                : 'Not set'}
-            </span>
-          </div>
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Start</span>
-            <span className="cook__hud-v">
-              {startMs !== null
-                ? formatServeAt(new Date(startMs).toISOString())
-                : '—'}
-            </span>
-          </div>
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Total</span>
-            <span className="cook__hud-v">
-              {formatDuration(schedule.totalDuration)}
-            </span>
-          </div>
-        </div>
-        <TubeMap
-          schedule={schedule}
-          lanes={lanes}
-          startMs={startMs}
-          nowMs={effectiveNow}
-        />
       </div>
     </div>
   );
