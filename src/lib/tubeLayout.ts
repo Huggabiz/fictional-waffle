@@ -143,16 +143,13 @@ export interface Pt {
 }
 
 /**
- * Points for a connector from one station to the next, in (main, cross)
- * coordinates — main is the time axis. A change of sub-lane leaves the line
- * as a 45° spur with a short straight run either side for rounded corners.
- *
- * Dependencies are often tight (one task ends exactly as the next starts),
- * so there's no room between the stations for the spur. The connector is
- * therefore centred on the midpoint and allowed to run back into the
- * source segment and forward into the target segment — it's drawn UNDER the
- * track, so the overlap reads as the line forking. `minMain`/`maxMain` bound
- * how far it may borrow (the far ends of the two segments).
+ * Points for a connector between two stations, in (main, cross) coordinates
+ * (main is the time axis). A change of sub-lane leaves the source track at
+ * EXACTLY its end as a 45° diagonal, then runs straight along the target
+ * lane into the next station — so the connector joins the straight track
+ * sections flush, with no leftover stub of segment past the fork. A short
+ * collinear lead-in lets the corner round. `minMain`/`maxMain` bound how far
+ * it may borrow into the two segments.
  */
 export function connectorPoints(
   mainA: number,
@@ -169,30 +166,19 @@ export function connectorPoints(
     ];
   }
   const diag = Math.abs(crossB - crossA);
-  // Keep a straight run each side so the corners always have room to round;
-  // when space is tight the diagonal shrinks (shallower than 45°) but the
-  // corners stay rounded rather than collapsing to a sharp kink.
-  const minStraight = 9;
-  const idealStraight = 16;
-  const mid = (mainA + mainB) / 2;
-  const halfSpan = diag / 2 + idealStraight;
-  const s = Math.max(minMain, mid - halfSpan);
-  const e = Math.min(maxMain, mid + halfSpan);
-  const available = e - s;
-  if (available < 2 * minStraight + 6) {
-    return [
-      { main: mainA, cross: crossA },
-      { main: mainB, cross: crossB },
-    ];
-  }
-  const diagLen = Math.min(diag, available - 2 * minStraight);
-  const straight = (available - diagLen) / 2;
-  return [
-    { main: s, cross: crossA },
-    { main: s + straight, cross: crossA },
-    { main: s + straight + diagLen, cross: crossB },
-    { main: e, cross: crossB },
+  const leadIn = 16; // collinear run over the source segment, so the corner rounds
+  const s = Math.max(minMain, mainA - leadIn);
+  const diagEnd = Math.min(maxMain, mainA + diag);
+  const points = [
+    { main: s, cross: crossA }, // collinear with the source track
+    { main: mainA, cross: crossA }, // leave it exactly where the segment ends
+    { main: diagEnd, cross: crossB }, // 45° across to the target lane
   ];
+  if (mainB > diagEnd + 1) {
+    // straight run along the target lane into its station
+    points.push({ main: Math.min(maxMain, mainB), cross: crossB });
+  }
+  return points;
 }
 
 function lerp(from: Pt, to: Pt, dist: number): Pt {
