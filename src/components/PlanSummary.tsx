@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Schedule } from '../lib/scheduler';
 import { occupiesCook } from '../lib/scheduler';
 import { connectorPoints, layoutLanes, roundedPath } from '../lib/tubeLayout';
@@ -6,10 +6,11 @@ import { lineColor } from './TubeMap';
 import './PlanSummary.css';
 
 // A compact, text-free horizontal version of the tube map for the Planner.
-// Two views the user can switch between:
+// It always scales to fit the container width — start on the left, serve on
+// the right. Two views the user can switch between:
 //  - Tracks:  each dish on its own row, the shape of the cook at a glance.
-//  - Journey: the dishes bundled close together with the cook's path threading
-//             between them — an interchange wherever the cook hops dishes.
+//  - Journey: the dishes bundled tight together; where the cook moves from
+//             one dish to the next their lines converge at an interchange.
 
 interface Lane {
   recipeId: string;
@@ -26,7 +27,6 @@ interface PlanSummaryProps {
 type Mode = 'tracks' | 'journey';
 
 const G = {
-  pxPerSec: 0.16,
   leftPad: 18,
   rightPad: 58,
   topPad: 26,
@@ -37,7 +37,7 @@ const G = {
 // Tracks spreads the dishes out; Journey bundles them tight together.
 const BANDS: Record<Mode, { headPad: number; tailPad: number; rowGap: number }> = {
   tracks: { headPad: 20, tailPad: 16, rowGap: 16 },
-  journey: { headPad: 8, tailPad: 10, rowGap: 13 },
+  journey: { headPad: 7, tailPad: 7, rowGap: 12 },
 };
 
 function tickIntervalSec(totalSec: number): number {
@@ -57,11 +57,30 @@ function formatClock(ms: number): string {
 
 export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProps) {
   const [mode, setMode] = useState<Mode>('tracks');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(0);
+
+  // Measure the available width so the timeline can be scaled to fill it.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerW(entries[0].contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const view = useMemo(() => {
     const band = BANDS[mode];
     const total = Math.max(schedule.totalDuration, 60);
-    const mainOf = (sec: number) => G.leftPad + sec * G.pxPerSec;
+    const width = containerW > 0 ? containerW : 640;
+    // Scale time to the width: start at the left, serve near the right.
+    const pxPerSec = Math.max(
+      0.01,
+      (width - G.leftPad - G.rightPad) / total,
+    );
+    const mainOf = (sec: number) => G.leftPad + sec * pxPerSec;
     const laid = layoutLanes(schedule, lanes);
 
     let bandTop = G.topPad;
@@ -74,7 +93,6 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
       return { ...lane, color, crossOf };
     });
 
-    const width = mainOf(total) + G.rightPad;
     const height = bandTop + G.bottomPad;
 
     const step = tickIntervalSec(total);
@@ -97,11 +115,18 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
         ? mainOf(nowOffset)
         : null;
 
-    // The cook's journey: hands-on tasks in cooking order; wherever two
-    // consecutive ones belong to different dishes, the cook hops — drawn as
-    // an interchange linking the two recipe lines.
-    const hops: { d: string; ax: number; ay: number; bx: number; by: number }[] =
-      [];
+    // Journey: hands-on tasks in cooking order. Where two consecutive ones
+    // are different dishes, the cook hops — their two lines converge at a
+    // shared interchange circle, each keeping its own colour.
+    interface Hop {
+      dA: string;
+      colorA: string;
+      dB: string;
+      colorB: string;
+      mx: number;
+      my: number;
+    }
+    const hops: Hop[] = [];
     if (mode === 'journey') {
       const handsOn: {
         task: (typeof recipes)[number]['tasks'][number];
@@ -121,23 +146,43 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
         const ay = a.recipe.crossOf(a.task.subLane);
         const bx = mainOf(b.task.startOffset);
         const by = b.recipe.crossOf(b.task.subLane);
-        const d = roundedPath(
+        const mx = (ax + bx) / 2;
+        const my = (ay + by) / 2;
+        const dA = roundedPath(
           connectorPoints(
             ax,
             ay,
+            mx,
+            my,
+            mainOf(a.task.startOffset),
+            mx,
+          ).map((p) => ({ x: p.main, y: p.cross })),
+          G.cornerRadius,
+        );
+        const dB = roundedPath(
+          connectorPoints(
+            mx,
+            my,
             bx,
             by,
-            mainOf(a.task.startOffset),
+            mx,
             mainOf(b.task.endOffset),
           ).map((p) => ({ x: p.main, y: p.cross })),
           G.cornerRadius,
         );
-        hops.push({ d, ax, ay, bx, by });
+        hops.push({
+          dA,
+          colorA: a.recipe.color,
+          dB,
+          colorB: b.recipe.color,
+          mx,
+          my,
+        });
       }
     }
 
     return { recipes, width, height, ticks, serveX, nowX, mainOf, hops };
-  }, [schedule, lanes, startMs, nowMs, mode]);
+  }, [schedule, lanes, startMs, nowMs, mode, containerW]);
 
   const { width, height } = view;
 
@@ -178,7 +223,7 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
           </button>
         </div>
       </div>
-      <div className="plan-summary__scroll">
+      <div className="plan-summary__scroll" ref={scrollRef}>
         <svg
           className="plan-summary__svg"
           width={width}
@@ -282,21 +327,30 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
             </g>
           ))}
 
-          {/* Journey view: the cook's hops between dishes */}
+          {/* Journey view: dishes' lines converge at an interchange */}
           {view.hops.map((hop, i) => (
             <g key={`hop-${i}`}>
-              <path className="plan-summary__hop" d={hop.d} fill="none" />
-              <circle
-                className="plan-summary__interchange"
-                cx={hop.ax}
-                cy={hop.ay}
-                r={5}
+              <path
+                d={hop.dA}
+                fill="none"
+                stroke={hop.colorA}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={hop.dB}
+                fill="none"
+                stroke={hop.colorB}
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
               />
               <circle
                 className="plan-summary__interchange"
-                cx={hop.bx}
-                cy={hop.by}
-                r={5}
+                cx={hop.mx}
+                cy={hop.my}
+                r={5.5}
               />
             </g>
           ))}
