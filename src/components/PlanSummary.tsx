@@ -1,13 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Schedule } from '../lib/scheduler';
 import { occupiesCook } from '../lib/scheduler';
 import { connectorPoints, layoutLanes, roundedPath } from '../lib/tubeLayout';
 import { lineColor } from './TubeMap';
 import './PlanSummary.css';
 
-// A compact, text-free horizontal version of the tube map for the Planner —
-// the shape of the cook at a glance. Same lines and 45° branches as the Cook
-// view, just shrunk and without instructions. Time runs left → right.
+// A compact, text-free horizontal version of the tube map for the Planner.
+// Two views the user can switch between:
+//  - Tracks:  each dish on its own row, the shape of the cook at a glance.
+//  - Journey: the dishes bundled close together with the cook's path threading
+//             between them — an interchange wherever the cook hops dishes.
 
 interface Lane {
   recipeId: string;
@@ -21,16 +23,21 @@ interface PlanSummaryProps {
   nowMs: number;
 }
 
+type Mode = 'tracks' | 'journey';
+
 const G = {
   pxPerSec: 0.16,
   leftPad: 18,
   rightPad: 58,
   topPad: 26,
   bottomPad: 16,
-  bandHeadPad: 20,
-  bandTailPad: 16,
-  subLaneRowGap: 16,
   cornerRadius: 7,
+};
+
+// Tracks spreads the dishes out; Journey bundles them tight together.
+const BANDS: Record<Mode, { headPad: number; tailPad: number; rowGap: number }> = {
+  tracks: { headPad: 20, tailPad: 16, rowGap: 16 },
+  journey: { headPad: 8, tailPad: 10, rowGap: 13 },
 };
 
 function tickIntervalSec(totalSec: number): number {
@@ -49,7 +56,10 @@ function formatClock(ms: number): string {
 }
 
 export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProps) {
+  const [mode, setMode] = useState<Mode>('tracks');
+
   const view = useMemo(() => {
+    const band = BANDS[mode];
     const total = Math.max(schedule.totalDuration, 60);
     const mainOf = (sec: number) => G.leftPad + sec * G.pxPerSec;
     const laid = layoutLanes(schedule, lanes);
@@ -57,12 +67,10 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
     let bandTop = G.topPad;
     const recipes = laid.map((lane) => {
       const color = lineColor(lane.laneIndex);
-      const rowTop = bandTop + G.bandHeadPad;
-      const crossOf = (subLane: number) => rowTop + subLane * G.subLaneRowGap;
+      const rowTop = bandTop + band.headPad;
+      const crossOf = (subLane: number) => rowTop + subLane * band.rowGap;
       bandTop +=
-        G.bandHeadPad +
-        (lane.subLaneCount - 1) * G.subLaneRowGap +
-        G.bandTailPad;
+        band.headPad + (lane.subLaneCount - 1) * band.rowGap + band.tailPad;
       return { ...lane, color, crossOf };
     });
 
@@ -89,14 +97,87 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
         ? mainOf(nowOffset)
         : null;
 
-    return { recipes, width, height, ticks, serveX, nowX, mainOf };
-  }, [schedule, lanes, startMs, nowMs]);
+    // The cook's journey: hands-on tasks in cooking order; wherever two
+    // consecutive ones belong to different dishes, the cook hops — drawn as
+    // an interchange linking the two recipe lines.
+    const hops: { d: string; ax: number; ay: number; bx: number; by: number }[] =
+      [];
+    if (mode === 'journey') {
+      const handsOn: {
+        task: (typeof recipes)[number]['tasks'][number];
+        recipe: (typeof recipes)[number];
+      }[] = [];
+      for (const r of recipes) {
+        for (const t of r.tasks) {
+          if (occupiesCook(t.kind)) handsOn.push({ task: t, recipe: r });
+        }
+      }
+      handsOn.sort((a, b) => a.task.startOffset - b.task.startOffset);
+      for (let i = 0; i < handsOn.length - 1; i++) {
+        const a = handsOn[i];
+        const b = handsOn[i + 1];
+        if (a.recipe.recipeId === b.recipe.recipeId) continue;
+        const ax = mainOf(a.task.endOffset);
+        const ay = a.recipe.crossOf(a.task.subLane);
+        const bx = mainOf(b.task.startOffset);
+        const by = b.recipe.crossOf(b.task.subLane);
+        const d = roundedPath(
+          connectorPoints(
+            ax,
+            ay,
+            bx,
+            by,
+            mainOf(a.task.startOffset),
+            mainOf(b.task.endOffset),
+          ).map((p) => ({ x: p.main, y: p.cross })),
+          G.cornerRadius,
+        );
+        hops.push({ d, ax, ay, bx, by });
+      }
+    }
+
+    return { recipes, width, height, ticks, serveX, nowX, mainOf, hops };
+  }, [schedule, lanes, startMs, nowMs, mode]);
 
   const { width, height } = view;
 
   return (
     <div className="plan-summary">
-      <div className="plan-summary__caption">Timeline preview</div>
+      <div className="plan-summary__head">
+        <span className="plan-summary__caption">Timeline preview</span>
+        <div
+          className="plan-summary__modes"
+          role="radiogroup"
+          aria-label="Timeline view"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'tracks'}
+            className={
+              mode === 'tracks'
+                ? 'plan-summary__mode plan-summary__mode--on'
+                : 'plan-summary__mode'
+            }
+            onClick={() => setMode('tracks')}
+          >
+            Tracks
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'journey'}
+            className={
+              mode === 'journey'
+                ? 'plan-summary__mode plan-summary__mode--on'
+                : 'plan-summary__mode'
+            }
+            onClick={() => setMode('journey')}
+          >
+            Journey
+          </button>
+        </div>
+      </div>
       <div className="plan-summary__scroll">
         <svg
           className="plan-summary__svg"
@@ -115,7 +196,12 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                 x2={tick.x}
                 y2={height - G.bottomPad}
               />
-              <text className="plan-summary__tick-label" x={tick.x} y={G.topPad - 12} textAnchor="middle">
+              <text
+                className="plan-summary__tick-label"
+                x={tick.x}
+                y={G.topPad - 12}
+                textAnchor="middle"
+              >
                 {tick.label}
               </text>
             </g>
@@ -164,7 +250,9 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                     stroke={recipe.color}
                     strokeWidth={5}
                     strokeLinecap="round"
-                    strokeDasharray={occupiesCook(task.kind) ? undefined : '1.5 7'}
+                    strokeDasharray={
+                      occupiesCook(task.kind) ? undefined : '1.5 7'
+                    }
                   />
                 );
               })}
@@ -191,6 +279,25 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                   />
                 );
               })}
+            </g>
+          ))}
+
+          {/* Journey view: the cook's hops between dishes */}
+          {view.hops.map((hop, i) => (
+            <g key={`hop-${i}`}>
+              <path className="plan-summary__hop" d={hop.d} fill="none" />
+              <circle
+                className="plan-summary__interchange"
+                cx={hop.ax}
+                cy={hop.ay}
+                r={5}
+              />
+              <circle
+                className="plan-summary__interchange"
+                cx={hop.bx}
+                cy={hop.by}
+                r={5}
+              />
             </g>
           ))}
 
