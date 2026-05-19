@@ -161,14 +161,21 @@ export function connectorMainSpan(
 
 /**
  * 4-point polyline for a 45° cross-lane connector from (mainA, crossA) to
- * (mainB, crossB). Locked at 45° always — the diagonal's main-extent equals
- * its cross-extent. Any slack in the main span goes into the straight runs
- * before and after the corners, distributed evenly so the diagonal sits
- * centred. The corners P1 and P2 are spaced `cornerTangent` away from the
- * straight segment's tangent point, so `roundedPath` can round them without
- * clamping. If the layout left less room than `connectorMainSpan` requires,
- * the trailing straight collapses defensively — the geometry warns by
- * looking wrong, but the layout should have prevented this case.
+ * (mainB, crossB). The diagonal is locked at 45° always — its main-extent
+ * equals its cross-delta. `placement` decides where the diagonal sits when
+ * there's slack:
+ *  - `'source'` (default): bend right after the source. The line then runs
+ *    parallel to the destination column for the rest of the gap — the
+ *    classic tube-map fork shape, where lines diverge at the fork point.
+ *  - `'destination'`: bend right before the destination. The line stays on
+ *    the source column for the gap, then bends in at the end. Useful for
+ *    connectors that converge into an interchange (e.g. the source half of
+ *    a journey hop), where the geometry should X at the meeting point.
+ *
+ * The corners P1 and P2 are spaced `cornerTangent` away from the straight
+ * segment's tangent point so `roundedPath` can round them without clamping.
+ * The layout pre-pass should ensure mainDelta ≥ `connectorMainSpan` — the
+ * fallback below only protects against numerical edge cases.
  */
 export function connectorPoints(
   mainA: number,
@@ -176,6 +183,7 @@ export function connectorPoints(
   mainB: number,
   crossB: number,
   cornerTangent: number,
+  placement: 'source' | 'destination' = 'source',
 ): { main: number; cross: number }[] {
   const crossDelta = Math.abs(crossB - crossA);
   if (crossDelta < 0.5) {
@@ -188,13 +196,11 @@ export function connectorPoints(
   const required = connectorMainSpan(crossDelta, cornerTangent);
   let leadIn: number;
   if (mainDelta >= required) {
-    // Slack distributed equally to the two straights — diagonal stays centred.
-    const slack = mainDelta - required;
-    leadIn = cornerTangent + slack / 2;
+    leadIn =
+      placement === 'destination'
+        ? mainDelta - cornerTangent - crossDelta
+        : cornerTangent;
   } else {
-    // Cramped: keep the lead-in arc honest at the cost of the trailing one.
-    // The layout pre-pass should have made room; this branch only protects
-    // against numerical edge cases.
     leadIn = Math.max(0, Math.min(cornerTangent, mainDelta - crossDelta));
   }
   return [

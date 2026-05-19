@@ -273,6 +273,45 @@ export function TubeMap({
         }
       }
     }
+    // Journey hops are two connectors joined at an interchange — each half
+    // needs its own bend pair, so the pair as a whole needs twice the
+    // single-connector budget. Without this the hop's diagonals would cram
+    // and lines would zigzag back and forth across the interchange.
+    if (isJourney) {
+      const handsOnPre: { taskKey: string; recipeId: string; subLane: number; sec: number }[] = [];
+      for (const lp of lanePositions) {
+        for (const t of lp.lane.tasks) {
+          if (!occupiesCook(t.kind)) continue;
+          handsOnPre.push({
+            taskKey: `${lp.lane.recipeId}::${t.taskId}`,
+            recipeId: lp.lane.recipeId,
+            subLane: t.subLane,
+            sec: t.startOffset,
+          });
+        }
+      }
+      handsOnPre.sort((a, b) => a.sec - b.sec);
+      const subLaneXOf = new Map(
+        lanePositions.map((lp) => [lp.lane.recipeId, lp.subLaneX]),
+      );
+      for (let i = 0; i < handsOnPre.length - 1; i++) {
+        const a = handsOnPre[i];
+        const b = handsOnPre[i + 1];
+        if (a.recipeId === b.recipeId) continue;
+        const ax = subLaneXOf.get(a.recipeId)!(a.subLane);
+        const bx = subLaneXOf.get(b.recipeId)!(b.subLane);
+        const cross = Math.abs(ax - bx);
+        const fromIdx = endIdx.get(a.taskKey);
+        const toIdx = startIdx.get(b.taskKey);
+        if (fromIdx === undefined || toIdx === undefined) continue;
+        // Two halves: each needs 2R + cross/2, summed → 4R + cross.
+        constraints.push({
+          fromIdx,
+          toIdx,
+          minPx: 4 * g.cornerRadius + cross,
+        });
+      }
+    }
     constraints.sort((a, b) => a.fromIdx - b.fromIdx || a.toIdx - b.toIdx);
     for (const c of constraints) {
       const have = drawnYs[c.toIdx] - drawnYs[c.fromIdx];
@@ -393,9 +432,16 @@ export function TubeMap({
 
     const serveY = mainOf(total);
     const nowOffset = startMs !== null ? (nowMs - startMs) / 1000 : null;
+    // If the user has clicked Next, focusTaskId points at the active step —
+    // snap the now-line to that station's actual drawn y, because the
+    // per-station layout may have pushed it past the raw sec→y position
+    // returned by mainOf.
+    const focusStationY = focusTaskId
+      ? taskStartY.get(focusTaskId) ?? null
+      : null;
     const nowY =
       nowOffset !== null && nowOffset >= 0 && nowOffset <= total
-        ? mainOf(nowOffset)
+        ? focusStationY ?? mainOf(nowOffset)
         : null;
 
     // Journey: where the cook moves from one dish to another, the two lines
@@ -428,14 +474,17 @@ export function TubeMap({
         const by = startOf(b.recipe.recipeId, b.task.taskId);
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
+        // dA converges into the interchange (bend at midpoint end), dB
+        // diverges from it (bend at midpoint start). Together they form a
+        // clean X at the interchange rather than two centred zigzags.
         const dA = roundedPath(
-          connectorPoints(ay, ax, my, mx, g.cornerRadius).map(
+          connectorPoints(ay, ax, my, mx, g.cornerRadius, 'destination').map(
             (p) => ({ x: p.cross, y: p.main }),
           ),
           g.cornerRadius,
         );
         const dB = roundedPath(
-          connectorPoints(my, mx, by, bx, g.cornerRadius).map(
+          connectorPoints(my, mx, by, bx, g.cornerRadius, 'source').map(
             (p) => ({ x: p.cross, y: p.main }),
           ),
           g.cornerRadius,
@@ -476,7 +525,7 @@ export function TubeMap({
       stationPos,
       hops,
     };
-  }, [schedule, lanes, startMs, nowMs, mode]);
+  }, [schedule, lanes, startMs, nowMs, mode, focusTaskId]);
 
   // Re-centre the canvas on the focused task whenever it changes (a Next
   // press, or an auto-advance) — not on every now-tick, so the cook can
