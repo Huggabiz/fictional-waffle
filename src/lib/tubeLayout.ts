@@ -164,18 +164,21 @@ export function connectorMainSpan(
  * (mainB, crossB). The diagonal is locked at 45° always — its main-extent
  * equals its cross-delta. `placement` decides where the diagonal sits when
  * there's slack:
- *  - `'source'` (default): bend right after the source. The line then runs
- *    parallel to the destination column for the rest of the gap — the
- *    classic tube-map fork shape, where lines diverge at the fork point.
- *  - `'destination'`: bend right before the destination. The line stays on
- *    the source column for the gap, then bends in at the end. Useful for
- *    connectors that converge into an interchange (e.g. the source half of
- *    a journey hop), where the geometry should X at the meeting point.
+ *  - `'destination'` (default): bend right before the destination. The line
+ *    stays on the source column for the gap, then bends into the target
+ *    column at the end. Reads as "the dish waits on its prep track until
+ *    the next step needs it" — the natural cooking flow.
+ *  - `'source'`: bend right after the source. The line runs parallel to
+ *    the destination column for the rest of the gap. Use this when the
+ *    visual emphasis is on divergence (e.g. the destination half of a
+ *    journey hop where the line leaves the interchange).
  *
  * The corners P1 and P2 are spaced `cornerTangent` away from the straight
  * segment's tangent point so `roundedPath` can round them without clamping.
- * The layout pre-pass should ensure mainDelta ≥ `connectorMainSpan` — the
- * fallback below only protects against numerical edge cases.
+ * The layout pre-pass should ensure mainDelta ≥ `connectorMainSpan`. The
+ * fallback splits any sub-threshold slack symmetrically when crossDelta
+ * still fits, or collapses to a straight diagonal if it doesn't — never
+ * a backward-running segment.
  */
 export function connectorPoints(
   mainA: number,
@@ -183,7 +186,7 @@ export function connectorPoints(
   mainB: number,
   crossB: number,
   cornerTangent: number,
-  placement: 'source' | 'destination' = 'source',
+  placement: 'source' | 'destination' = 'destination',
 ): { main: number; cross: number }[] {
   const crossDelta = Math.abs(crossB - crossA);
   if (crossDelta < 0.5) {
@@ -200,8 +203,19 @@ export function connectorPoints(
       placement === 'destination'
         ? mainDelta - cornerTangent - crossDelta
         : cornerTangent;
+  } else if (mainDelta >= crossDelta) {
+    // No room for full cornerTangent on both sides — share what's left.
+    // Corners will round on shorter tangents; visibly tighter but not
+    // overshooting or backward-running.
+    leadIn = (mainDelta - crossDelta) / 2;
   } else {
-    leadIn = Math.max(0, Math.min(cornerTangent, mainDelta - crossDelta));
+    // Can't fit a 45° turn at all. Draw straight from source to target —
+    // not 45°, but at least monotonic. The layout pre-pass shouldn't allow
+    // this case; if it shows up, it's a signal the constraint was missed.
+    return [
+      { main: mainA, cross: crossA },
+      { main: mainB, cross: crossB },
+    ];
   }
   return [
     { main: mainA, cross: crossA },

@@ -148,18 +148,18 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
         const by = b.recipe.crossOf(b.task.subLane);
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
+        // dA converges into the interchange (bend at midpoint end), dB
+        // diverges from it (bend at midpoint start) — together a clean X.
         const dA = roundedPath(
-          connectorPoints(ax, ay, mx, my, G.cornerRadius).map((p) => ({
-            x: p.main,
-            y: p.cross,
-          })),
+          connectorPoints(ax, ay, mx, my, G.cornerRadius, 'destination').map(
+            (p) => ({ x: p.main, y: p.cross }),
+          ),
           G.cornerRadius,
         );
         const dB = roundedPath(
-          connectorPoints(mx, my, bx, by, G.cornerRadius).map((p) => ({
-            x: p.main,
-            y: p.cross,
-          })),
+          connectorPoints(mx, my, bx, by, G.cornerRadius, 'source').map(
+            (p) => ({ x: p.main, y: p.cross }),
+          ),
           G.cornerRadius,
         );
         hops.push({

@@ -52,7 +52,7 @@ const GEO = {
   trackPad: 24,
   subLaneGap: 34,
   instrGutter: 286,
-  cornerRadius: 13,
+  cornerRadius: 20,
   // Minimum drawn gap between adjacent task boundaries. The map stays mostly
   // time-proportional, but — like a tube map bends geography — close stations
   // get spaced out so they stay legible.
