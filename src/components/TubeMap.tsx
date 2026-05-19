@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Schedule, ScheduledIngredient } from '../lib/scheduler';
+import { occupiesCook } from '../lib/scheduler';
 import {
   connectorPoints,
   layoutLanes,
   roundedPath,
 } from '../lib/tubeLayout';
+import type { LaneLayout, SubLanedTask } from '../lib/tubeLayout';
 import { formatDuration } from '../lib/recipeMetrics';
 import type { TaskKind } from '../types';
 import './TubeMap.css';
@@ -61,6 +63,23 @@ interface Lane {
   title: string;
 }
 
+// Two ways to read the same schedule:
+//  - tracks:  each dish keeps its own column, well apart. The default.
+//  - journey: every dish's line bundles into one central group, and where
+//             the cook moves from one dish to the next the lines converge
+//             at a shared interchange — the cook's path through the meal.
+type Mode = 'tracks' | 'journey';
+
+interface RecipeView extends LaneLayout {
+  color: string;
+  trackLeft: number;
+  subLaneX: (subLane: number) => number;
+  /** Keyed by `recipeId::taskId` → which column the label sits in. */
+  labelSide: Map<string, 'left' | 'right'>;
+  leftLabelX: number;
+  rightLabelX: number;
+}
+
 interface TubeMapProps {
   schedule: Schedule;
   lanes: Lane[];
@@ -108,9 +127,11 @@ export function TubeMap({
   nowMs,
   focusTaskId,
 }: TubeMapProps) {
+  const [mode, setMode] = useState<Mode>('tracks');
   const scrollRef = useRef<HTMLDivElement>(null);
   const view = useMemo(() => {
     const g = GEO;
+    const isJourney = mode === 'journey';
     const total = Math.max(schedule.totalDuration, 60);
     const laid = layoutLanes(schedule, lanes);
 
@@ -151,59 +172,104 @@ export function TubeMap({
       return g.mainStart + loY + frac * (hiY - loY);
     };
 
-    let bandLeft = g.leftAxis;
-    const recipes = laid.map((lane) => {
-      const color = lineColor(lane.laneIndex);
-      // Every band keeps an instruction gutter on BOTH sides. The cook works
-      // one task at a time, so a station's label can sit on either side — we
-      // place it in whichever column has vertical room (preferring the
-      // right), so steps in quick succession don't stack their labels on top
-      // of one another.
-      const trackLeft = bandLeft + g.instrGutter + g.trackPad;
-      const subLaneX = (subLane: number) => trackLeft + subLane * g.subLaneGap;
-      const trackRight = subLaneX(lane.subLaneCount - 1);
-
-      const labelSide = new Map<string, 'left' | 'right'>();
+    // Assign each station's label to the left or right column, preferring
+    // the right and dropping to the left when the right column has no
+    // vertical room — so labels of steps close in time don't stack up.
+    const assignSides = (
+      entries: { recipeId: string; task: SubLanedTask }[],
+    ): Map<string, 'left' | 'right'> => {
+      const side = new Map<string, 'left' | 'right'>();
       let rightBottom = -Infinity;
       let leftBottom = -Infinity;
-      for (const t of [...lane.tasks].sort(
-        (a, b) => a.startOffset - b.startOffset,
+      for (const { recipeId, task } of [...entries].sort(
+        (a, b) => a.task.startOffset - b.task.startOffset,
       )) {
         const lineCount =
           1 +
-          (t.major && t.group ? 1 : 0) +
-          (ingredientsText(t.ingredients) ? 1 : 0);
+          (task.major && task.group ? 1 : 0) +
+          (ingredientsText(task.ingredients) ? 1 : 0);
         const half = (lineCount * 15) / 2;
-        const y = mainOf(t.startOffset);
+        const y = mainOf(task.startOffset);
         let chosen: 'left' | 'right';
         if (y - half >= rightBottom) chosen = 'right';
         else if (y - half >= leftBottom) chosen = 'left';
         else chosen = rightBottom <= leftBottom ? 'right' : 'left';
         if (chosen === 'right') rightBottom = y + half + 6;
         else leftBottom = y + half + 6;
-        labelSide.set(t.taskId, chosen);
+        side.set(`${recipeId}::${task.taskId}`, chosen);
       }
+      return side;
+    };
 
-      const out = {
-        ...lane,
-        color,
-        bandLeft,
-        trackLeft,
-        subLaneX,
-        labelSide,
-        leftLabelX: bandLeft + g.instrGutter - 14,
-        rightLabelX: trackRight + 24,
-      };
-      bandLeft +=
-        g.instrGutter +
-        g.trackPad +
-        (lane.subLaneCount - 1) * g.subLaneGap +
-        g.trackPad +
-        g.instrGutter;
-      return out;
-    });
+    let recipes: RecipeView[];
+    let width: number;
+    if (isJourney) {
+      // Journey: every dish's tracks bundle into one central group sharing a
+      // single pair of label columns — so the whole meal reads as one path.
+      const trackBase = g.leftAxis + g.instrGutter + g.trackPad;
+      let laneCursor = 0;
+      const blockStart = laid.map((lane) => {
+        const start = laneCursor;
+        laneCursor += lane.subLaneCount;
+        return start;
+      });
+      const trackRight =
+        trackBase + Math.max(0, laneCursor - 1) * g.subLaneGap;
+      const leftLabelX = g.leftAxis + g.instrGutter - 14;
+      const rightLabelX = trackRight + 24;
+      // One label-side pass over every station of every dish — they all
+      // share the same two columns.
+      const labelSide = assignSides(
+        laid.flatMap((lane) =>
+          lane.tasks.map((task) => ({ recipeId: lane.recipeId, task })),
+        ),
+      );
+      recipes = laid.map((lane, ri) => {
+        const start = blockStart[ri];
+        const subLaneX = (subLane: number) =>
+          trackBase + (start + subLane) * g.subLaneGap;
+        return {
+          ...lane,
+          color: lineColor(lane.laneIndex),
+          trackLeft: subLaneX(0),
+          subLaneX,
+          labelSide,
+          leftLabelX,
+          rightLabelX,
+        };
+      });
+      width = trackRight + g.trackPad + g.instrGutter + g.rightPad;
+    } else {
+      // Tracks: each dish keeps its own band, an instruction gutter on both
+      // sides, well apart from its neighbours.
+      let bandLeft = g.leftAxis;
+      recipes = laid.map((lane) => {
+        const trackLeft = bandLeft + g.instrGutter + g.trackPad;
+        const subLaneX = (subLane: number) =>
+          trackLeft + subLane * g.subLaneGap;
+        const trackRight = subLaneX(lane.subLaneCount - 1);
+        const out: RecipeView = {
+          ...lane,
+          color: lineColor(lane.laneIndex),
+          trackLeft,
+          subLaneX,
+          labelSide: assignSides(
+            lane.tasks.map((task) => ({ recipeId: lane.recipeId, task })),
+          ),
+          leftLabelX: bandLeft + g.instrGutter - 14,
+          rightLabelX: trackRight + 24,
+        };
+        bandLeft +=
+          g.instrGutter +
+          g.trackPad +
+          (lane.subLaneCount - 1) * g.subLaneGap +
+          g.trackPad +
+          g.instrGutter;
+        return out;
+      });
+      width = bandLeft + g.rightPad;
+    }
 
-    const width = bandLeft + g.rightPad;
     const height = mainOf(total) + g.bottomPad;
 
     const step = tickIntervalSec(total);
@@ -226,6 +292,59 @@ export function TubeMap({
         ? mainOf(nowOffset)
         : null;
 
+    // Journey: where the cook moves from one dish to another, the two lines
+    // converge at a shared interchange. Walk the hands-on tasks in cooking
+    // order; a change of dish between two consecutive ones is a hop.
+    interface Hop {
+      dA: string;
+      colorA: string;
+      dB: string;
+      colorB: string;
+      mx: number;
+      my: number;
+    }
+    const hops: Hop[] = [];
+    if (isJourney) {
+      const handsOn: { task: SubLanedTask; recipe: RecipeView }[] = [];
+      for (const r of recipes) {
+        for (const t of r.tasks) {
+          if (occupiesCook(t.kind)) handsOn.push({ task: t, recipe: r });
+        }
+      }
+      handsOn.sort((a, b) => a.task.startOffset - b.task.startOffset);
+      for (let i = 0; i < handsOn.length - 1; i++) {
+        const a = handsOn[i];
+        const b = handsOn[i + 1];
+        if (a.recipe.recipeId === b.recipe.recipeId) continue;
+        const ax = a.recipe.subLaneX(a.task.subLane);
+        const ay = mainOf(a.task.endOffset);
+        const bx = b.recipe.subLaneX(b.task.subLane);
+        const by = mainOf(b.task.startOffset);
+        const mx = (ax + bx) / 2;
+        const my = (ay + by) / 2;
+        const dA = roundedPath(
+          connectorPoints(ay, ax, my, mx, mainOf(a.task.startOffset), my).map(
+            (p) => ({ x: p.cross, y: p.main }),
+          ),
+          g.cornerRadius,
+        );
+        const dB = roundedPath(
+          connectorPoints(my, mx, by, bx, my, mainOf(b.task.endOffset)).map(
+            (p) => ({ x: p.cross, y: p.main }),
+          ),
+          g.cornerRadius,
+        );
+        hops.push({
+          dA,
+          colorA: a.recipe.color,
+          dB,
+          colorB: b.recipe.color,
+          mx,
+          my,
+        });
+      }
+    }
+
     const stationPos = new Map<string, { x: number; y: number }>();
     for (const r of recipes) {
       for (const t of r.tasks) {
@@ -236,8 +355,20 @@ export function TubeMap({
       }
     }
 
-    return { g, recipes, width, height, ticks, serveY, nowY, mainOf, stationPos };
-  }, [schedule, lanes, startMs, nowMs]);
+    return {
+      g,
+      isJourney,
+      recipes,
+      width,
+      height,
+      ticks,
+      serveY,
+      nowY,
+      mainOf,
+      stationPos,
+      hops,
+    };
+  }, [schedule, lanes, startMs, nowMs, mode]);
 
   // Re-centre the canvas on the focused task whenever it changes (a Next
   // press, or an auto-advance) — not on every now-tick, so the cook can
@@ -260,7 +391,8 @@ export function TubeMap({
 
   return (
     <div className="tube">
-      <div className="tube__legend">
+      <div className="tube__head">
+        <div className="tube__legend">
         {recipes.map((r) => (
           <span key={r.recipeId} className="tube__legend-item">
             <span className="tube__legend-line" style={{ background: r.color }} />
@@ -279,6 +411,35 @@ export function TubeMap({
           <span className="tube__legend-line tube__legend-line--dormant" />
           Dormant
         </span>
+        </div>
+        <div
+          className="tube__modes"
+          role="radiogroup"
+          aria-label="Timeline view"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'tracks'}
+            className={
+              mode === 'tracks' ? 'tube__mode tube__mode--on' : 'tube__mode'
+            }
+            onClick={() => setMode('tracks')}
+          >
+            Tracks
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={mode === 'journey'}
+            className={
+              mode === 'journey' ? 'tube__mode tube__mode--on' : 'tube__mode'
+            }
+            onClick={() => setMode('journey')}
+          >
+            Journey
+          </button>
+        </div>
       </div>
 
       <div className="tube__scroll" ref={scrollRef}>
@@ -323,8 +484,10 @@ export function TubeMap({
             Serve
           </text>
 
-          {/* Recipe titles */}
-          {recipes.map((r) => (
+          {/* Recipe titles — only in Tracks; the Journey bundle shares one
+              central group, so the legend carries the colour key instead. */}
+          {!view.isJourney &&
+            recipes.map((r) => (
             <text
               key={`title-${r.recipeId}`}
               className="tube__recipe-title"
@@ -484,7 +647,10 @@ export function TubeMap({
                       ? `${-(lines.length - 1) * 0.62}em`
                       : '0';
                   // Side chosen by available room — see the memo above.
-                  const onLeft = recipe.labelSide.get(task.taskId) === 'left';
+                  const onLeft =
+                    recipe.labelSide.get(
+                      `${recipe.recipeId}::${task.taskId}`,
+                    ) === 'left';
                   const labelX = onLeft
                     ? recipe.leftLabelX
                     : recipe.rightLabelX;
@@ -543,6 +709,35 @@ export function TubeMap({
               </g>
             );
           })}
+
+          {/* Journey: where the cook hops dishes, the lines converge at a
+              shared interchange, each keeping its own colour. */}
+          {view.hops.map((hop, i) => (
+            <g key={`hop-${i}`}>
+              <path
+                d={hop.dA}
+                fill="none"
+                stroke={hop.colorA}
+                strokeWidth={8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d={hop.dB}
+                fill="none"
+                stroke={hop.colorB}
+                strokeWidth={8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle
+                className="tube__interchange"
+                cx={hop.mx}
+                cy={hop.my}
+                r={9}
+              />
+            </g>
+          ))}
 
           {/* "You are here" */}
           {view.nowY !== null && (

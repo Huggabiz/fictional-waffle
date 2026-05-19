@@ -6,12 +6,43 @@
   min-height: 0;
 }
 
+.tube__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex: none;
+}
+
 .tube__legend {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3) var(--space-4);
   align-items: center;
+  flex: 1 1 auto;
+}
+
+.tube__modes {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  overflow: hidden;
   flex: none;
+}
+
+.tube__mode {
+  font-size: 12px;
+  font-weight: 600;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: 0;
+  cursor: pointer;
+}
+
+.tube__mode--on {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
 }
 
 .tube__legend-item {
@@ -130,6 +161,13 @@
 .tube__leader {
   stroke-width: 1;
   opacity: 0.32;
+}
+
+/* Journey view — interchange where the cook moves between dishes. */
+.tube__interchange {
+  fill: var(--color-surface);
+  stroke: var(--color-text-muted);
+  stroke-width: 3;
 }
 
 @media (prefers-color-scheme: dark) {
