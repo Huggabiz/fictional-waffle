@@ -50,6 +50,10 @@ const GEO = {
   subLaneGap: 34,
   instrGutter: 286,
   cornerRadius: 13,
+  // Minimum drawn gap between adjacent task boundaries. The map stays mostly
+  // time-proportional, but — like a tube map bends geography — close stations
+  // get spaced out so they stay legible.
+  minEventGap: 30,
 };
 
 interface Lane {
@@ -108,8 +112,44 @@ export function TubeMap({
   const view = useMemo(() => {
     const g = GEO;
     const total = Math.max(schedule.totalDuration, 60);
-    const mainOf = (sec: number) => g.mainStart + sec * g.pxPerSec;
     const laid = layoutLanes(schedule, lanes);
+
+    // Time-warp: a tube map bends geography for clarity. The map stays mostly
+    // proportional to real time — so the cook still feels how long the cook
+    // is — but two station events are never drawn closer than `minEventGap`,
+    // so steps that happen in quick succession stay legible.
+    const events = new Set<number>([0, total]);
+    for (const lane of laid) {
+      for (const t of lane.tasks) {
+        if (t.startOffset > 0 && t.startOffset < total) events.add(t.startOffset);
+        if (t.endOffset > 0 && t.endOffset < total) events.add(t.endOffset);
+      }
+    }
+    const sortedEvents = [...events].sort((a, b) => a - b);
+    const drawnAt = new Map<number, number>();
+    drawnAt.set(sortedEvents[0], 0);
+    let drawn = 0;
+    for (let i = 1; i < sortedEvents.length; i++) {
+      const realGap = sortedEvents[i] - sortedEvents[i - 1];
+      drawn += Math.max(realGap * g.pxPerSec, g.minEventGap);
+      drawnAt.set(sortedEvents[i], drawn);
+    }
+    const mainOf = (sec: number) => {
+      const clamped = Math.max(0, Math.min(total, sec));
+      let lo = sortedEvents[0];
+      let hi = sortedEvents[sortedEvents.length - 1];
+      for (let i = 1; i < sortedEvents.length; i++) {
+        if (sortedEvents[i] >= clamped) {
+          lo = sortedEvents[i - 1];
+          hi = sortedEvents[i];
+          break;
+        }
+      }
+      const loY = drawnAt.get(lo)!;
+      const hiY = drawnAt.get(hi)!;
+      const frac = hi > lo ? (clamped - lo) / (hi - lo) : 0;
+      return g.mainStart + loY + frac * (hiY - loY);
+    };
 
     let bandLeft = g.leftAxis;
     const recipes = laid.map((lane) => {
