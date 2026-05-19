@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Schedule, ScheduledIngredient } from '../lib/scheduler';
 import { occupiesCook } from '../lib/scheduler';
 import {
+  connectorMainSpan,
   connectorPoints,
   layoutLanes,
   roundedPath,
@@ -135,77 +136,20 @@ export function TubeMap({
     const total = Math.max(schedule.totalDuration, 60);
     const laid = layoutLanes(schedule, lanes);
 
-    // Time-warp: a tube map bends geography for clarity. The map stays mostly
-    // proportional to real time — so the cook still feels how long the cook
-    // is — but two station events are never drawn closer than `minEventGap`,
-    // so steps that happen in quick succession stay legible.
-    const events = new Set<number>([0, total]);
-    for (const lane of laid) {
-      for (const t of lane.tasks) {
-        if (t.startOffset > 0 && t.startOffset < total) events.add(t.startOffset);
-        if (t.endOffset > 0 && t.endOffset < total) events.add(t.endOffset);
-      }
+    // --- Pass 1: cross-axis layout. Each recipe's lane positions don't
+    // depend on the time-warp, so they're computed first — the per-connector
+    // spacing pass (Pass 2) needs cross-deltas in pixels.
+    interface LanePos {
+      lane: LaneLayout;
+      color: string;
+      trackLeft: number;
+      subLaneX: (subLane: number) => number;
+      leftLabelX: number;
+      rightLabelX: number;
     }
-    const sortedEvents = [...events].sort((a, b) => a - b);
-    const drawnAt = new Map<number, number>();
-    drawnAt.set(sortedEvents[0], 0);
-    let drawn = 0;
-    for (let i = 1; i < sortedEvents.length; i++) {
-      const realGap = sortedEvents[i] - sortedEvents[i - 1];
-      drawn += Math.max(realGap * g.pxPerSec, g.minEventGap);
-      drawnAt.set(sortedEvents[i], drawn);
-    }
-    const mainOf = (sec: number) => {
-      const clamped = Math.max(0, Math.min(total, sec));
-      let lo = sortedEvents[0];
-      let hi = sortedEvents[sortedEvents.length - 1];
-      for (let i = 1; i < sortedEvents.length; i++) {
-        if (sortedEvents[i] >= clamped) {
-          lo = sortedEvents[i - 1];
-          hi = sortedEvents[i];
-          break;
-        }
-      }
-      const loY = drawnAt.get(lo)!;
-      const hiY = drawnAt.get(hi)!;
-      const frac = hi > lo ? (clamped - lo) / (hi - lo) : 0;
-      return g.mainStart + loY + frac * (hiY - loY);
-    };
-
-    // Assign each station's label to the left or right column, preferring
-    // the right and dropping to the left when the right column has no
-    // vertical room — so labels of steps close in time don't stack up.
-    const assignSides = (
-      entries: { recipeId: string; task: SubLanedTask }[],
-    ): Map<string, 'left' | 'right'> => {
-      const side = new Map<string, 'left' | 'right'>();
-      let rightBottom = -Infinity;
-      let leftBottom = -Infinity;
-      for (const { recipeId, task } of [...entries].sort(
-        (a, b) => a.task.startOffset - b.task.startOffset,
-      )) {
-        const lineCount =
-          1 +
-          (task.major && task.group ? 1 : 0) +
-          (ingredientsText(task.ingredients) ? 1 : 0);
-        const half = (lineCount * 15) / 2;
-        const y = mainOf(task.startOffset);
-        let chosen: 'left' | 'right';
-        if (y - half >= rightBottom) chosen = 'right';
-        else if (y - half >= leftBottom) chosen = 'left';
-        else chosen = rightBottom <= leftBottom ? 'right' : 'left';
-        if (chosen === 'right') rightBottom = y + half + 6;
-        else leftBottom = y + half + 6;
-        side.set(`${recipeId}::${task.taskId}`, chosen);
-      }
-      return side;
-    };
-
-    let recipes: RecipeView[];
+    let lanePositions: LanePos[];
     let width: number;
     if (isJourney) {
-      // Journey: every dish's tracks bundle into one central group sharing a
-      // single pair of label columns — so the whole meal reads as one path.
       const trackBase = g.leftAxis + g.instrGutter + g.trackPad;
       let laneCursor = 0;
       const blockStart = laid.map((lane) => {
@@ -217,45 +161,32 @@ export function TubeMap({
         trackBase + Math.max(0, laneCursor - 1) * g.subLaneGap;
       const leftLabelX = g.leftAxis + g.instrGutter - 14;
       const rightLabelX = trackRight + 24;
-      // One label-side pass over every station of every dish — they all
-      // share the same two columns.
-      const labelSide = assignSides(
-        laid.flatMap((lane) =>
-          lane.tasks.map((task) => ({ recipeId: lane.recipeId, task })),
-        ),
-      );
-      recipes = laid.map((lane, ri) => {
+      lanePositions = laid.map((lane, ri) => {
         const start = blockStart[ri];
         const subLaneX = (subLane: number) =>
           trackBase + (start + subLane) * g.subLaneGap;
         return {
-          ...lane,
+          lane,
           color: lineColor(lane.laneIndex),
           trackLeft: subLaneX(0),
           subLaneX,
-          labelSide,
           leftLabelX,
           rightLabelX,
         };
       });
       width = trackRight + g.trackPad + g.instrGutter + g.rightPad;
     } else {
-      // Tracks: each dish keeps its own band, an instruction gutter on both
-      // sides, well apart from its neighbours.
       let bandLeft = g.leftAxis;
-      recipes = laid.map((lane) => {
+      lanePositions = laid.map((lane) => {
         const trackLeft = bandLeft + g.instrGutter + g.trackPad;
         const subLaneX = (subLane: number) =>
           trackLeft + subLane * g.subLaneGap;
         const trackRight = subLaneX(lane.subLaneCount - 1);
-        const out: RecipeView = {
-          ...lane,
+        const out: LanePos = {
+          lane,
           color: lineColor(lane.laneIndex),
           trackLeft,
           subLaneX,
-          labelSide: assignSides(
-            lane.tasks.map((task) => ({ recipeId: lane.recipeId, task })),
-          ),
           leftLabelX: bandLeft + g.instrGutter - 14,
           rightLabelX: trackRight + 24,
         };
@@ -270,7 +201,182 @@ export function TubeMap({
       width = bandLeft + g.rightPad;
     }
 
-    const height = mainOf(total) + g.bottomPad;
+    // --- Pass 2: time-warp with per-station events. Each task contributes
+    // a start and an end event keyed by `recipeId::taskId::kind`, so two
+    // stations at the same real time can sit at different drawn-ys when
+    // geometry demands it (e.g. a fork where the parent ends and a
+    // cross-lane child starts at the same instant — the child gets pushed
+    // down by the connector's required main span).
+    //
+    // 1. Build event list: real-time anchors (0, total) plus a start+end
+    //    event per task. Sort by sec, with 'end' before 'start' at the
+    //    same sec so a chain reads parent-end → child-start.
+    // 2. Lay them out left-to-right with `minEventGap` minimum drawn gap.
+    // 3. Walk every cross-lane connector; if drawn(child-start) -
+    //    drawn(parent-end) < 2R + crossDelta, push all later events by the
+    //    deficit. Process in source-event order so a push never violates an
+    //    upstream constraint (it only adds room downstream).
+    type EvKind = 'anchor' | 'start' | 'end';
+    interface Ev {
+      sec: number;
+      kind: EvKind;
+      key?: string;
+    }
+    const events: Ev[] = [
+      { sec: 0, kind: 'anchor' },
+      { sec: total, kind: 'anchor' },
+    ];
+    for (const lp of lanePositions) {
+      for (const t of lp.lane.tasks) {
+        const key = `${lp.lane.recipeId}::${t.taskId}`;
+        events.push({ sec: t.startOffset, kind: 'start', key });
+        events.push({ sec: t.endOffset, kind: 'end', key });
+      }
+    }
+    const rank = (k: EvKind) => (k === 'end' ? 0 : k === 'anchor' ? 1 : 2);
+    events.sort((a, b) =>
+      a.sec !== b.sec ? a.sec - b.sec : rank(a.kind) - rank(b.kind),
+    );
+    const drawnYs: number[] = new Array(events.length);
+    drawnYs[0] = 0;
+    for (let i = 1; i < events.length; i++) {
+      const realGap = events[i].sec - events[i - 1].sec;
+      drawnYs[i] = drawnYs[i - 1] + Math.max(realGap * g.pxPerSec, g.minEventGap);
+    }
+    const startIdx = new Map<string, number>();
+    const endIdx = new Map<string, number>();
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i];
+      if (e.kind === 'start') startIdx.set(e.key!, i);
+      else if (e.kind === 'end') endIdx.set(e.key!, i);
+    }
+
+    // Cross-lane connectors carry a spacing constraint. Collect them all,
+    // sort by source-event order, then apply with cascading pushes.
+    const constraints: { fromIdx: number; toIdx: number; minPx: number }[] = [];
+    for (const lp of lanePositions) {
+      for (const t of lp.lane.tasks) {
+        for (const depId of t.dependsOn) {
+          const dep = lp.lane.byTaskId.get(depId);
+          if (!dep || dep.subLane === t.subLane) continue;
+          const cross = Math.abs(
+            lp.subLaneX(t.subLane) - lp.subLaneX(dep.subLane),
+          );
+          const fromIdx = endIdx.get(`${lp.lane.recipeId}::${depId}`);
+          const toIdx = startIdx.get(`${lp.lane.recipeId}::${t.taskId}`);
+          if (fromIdx === undefined || toIdx === undefined) continue;
+          constraints.push({
+            fromIdx,
+            toIdx,
+            minPx: connectorMainSpan(cross, g.cornerRadius),
+          });
+        }
+      }
+    }
+    constraints.sort((a, b) => a.fromIdx - b.fromIdx || a.toIdx - b.toIdx);
+    for (const c of constraints) {
+      const have = drawnYs[c.toIdx] - drawnYs[c.fromIdx];
+      if (have < c.minPx) {
+        const deficit = c.minPx - have;
+        for (let i = c.toIdx; i < drawnYs.length; i++) drawnYs[i] += deficit;
+      }
+    }
+
+    // --- Pass 3: derive per-task drawn ys and a sec→y axis for ticks.
+    const taskStartY = new Map<string, number>();
+    const taskEndY = new Map<string, number>();
+    for (const [key, i] of startIdx) taskStartY.set(key, g.mainStart + drawnYs[i]);
+    for (const [key, i] of endIdx) taskEndY.set(key, g.mainStart + drawnYs[i]);
+    const startOf = (recipeId: string, taskId: string) =>
+      taskStartY.get(`${recipeId}::${taskId}`) ?? g.mainStart;
+    const endOf = (recipeId: string, taskId: string) =>
+      taskEndY.get(`${recipeId}::${taskId}`) ?? g.mainStart;
+
+    // For the time axis: collapse to one y per sec (the earliest, i.e. the
+    // 'end' or 'anchor' if present). Two stations sharing a sec still draw
+    // at separate ys via taskStartY/EndY; ticks just pick the top.
+    const secToY = new Map<number, number>();
+    for (let i = 0; i < events.length; i++) {
+      const e = events[i];
+      if (!secToY.has(e.sec)) secToY.set(e.sec, g.mainStart + drawnYs[i]);
+    }
+    const sortedSecs = [...secToY.keys()].sort((a, b) => a - b);
+    const mainOf = (sec: number) => {
+      const clamped = Math.max(0, Math.min(total, sec));
+      let lo = sortedSecs[0];
+      let hi = sortedSecs[sortedSecs.length - 1];
+      for (let i = 1; i < sortedSecs.length; i++) {
+        if (sortedSecs[i] >= clamped) {
+          lo = sortedSecs[i - 1];
+          hi = sortedSecs[i];
+          break;
+        }
+      }
+      const loY = secToY.get(lo)!;
+      const hiY = secToY.get(hi)!;
+      const frac = hi > lo ? (clamped - lo) / (hi - lo) : 0;
+      return loY + frac * (hiY - loY);
+    };
+
+    // --- Pass 4: label sides. Uses station ys to avoid stacking labels.
+    const assignSides = (
+      entries: { recipeId: string; task: SubLanedTask }[],
+    ): Map<string, 'left' | 'right'> => {
+      const side = new Map<string, 'left' | 'right'>();
+      let rightBottom = -Infinity;
+      let leftBottom = -Infinity;
+      for (const { recipeId, task } of [...entries].sort(
+        (a, b) => a.task.startOffset - b.task.startOffset,
+      )) {
+        const lineCount =
+          1 +
+          (task.major && task.group ? 1 : 0) +
+          (ingredientsText(task.ingredients) ? 1 : 0);
+        const half = (lineCount * 15) / 2;
+        const y = startOf(recipeId, task.taskId);
+        let chosen: 'left' | 'right';
+        if (y - half >= rightBottom) chosen = 'right';
+        else if (y - half >= leftBottom) chosen = 'left';
+        else chosen = rightBottom <= leftBottom ? 'right' : 'left';
+        if (chosen === 'right') rightBottom = y + half + 6;
+        else leftBottom = y + half + 6;
+        side.set(`${recipeId}::${task.taskId}`, chosen);
+      }
+      return side;
+    };
+
+    let recipes: RecipeView[];
+    if (isJourney) {
+      const labelSide = assignSides(
+        lanePositions.flatMap((lp) =>
+          lp.lane.tasks.map((task) => ({ recipeId: lp.lane.recipeId, task })),
+        ),
+      );
+      recipes = lanePositions.map((lp) => ({
+        ...lp.lane,
+        color: lp.color,
+        trackLeft: lp.trackLeft,
+        subLaneX: lp.subLaneX,
+        labelSide,
+        leftLabelX: lp.leftLabelX,
+        rightLabelX: lp.rightLabelX,
+      }));
+    } else {
+      recipes = lanePositions.map((lp) => ({
+        ...lp.lane,
+        color: lp.color,
+        trackLeft: lp.trackLeft,
+        subLaneX: lp.subLaneX,
+        labelSide: assignSides(
+          lp.lane.tasks.map((task) => ({ recipeId: lp.lane.recipeId, task })),
+        ),
+        leftLabelX: lp.leftLabelX,
+        rightLabelX: lp.rightLabelX,
+      }));
+    }
+
+    const lastDrawn = drawnYs[drawnYs.length - 1];
+    const height = g.mainStart + lastDrawn + g.bottomPad;
 
     const step = tickIntervalSec(total);
     const ticks: { y: number; label: string }[] = [];
@@ -317,19 +423,19 @@ export function TubeMap({
         const b = handsOn[i + 1];
         if (a.recipe.recipeId === b.recipe.recipeId) continue;
         const ax = a.recipe.subLaneX(a.task.subLane);
-        const ay = mainOf(a.task.endOffset);
+        const ay = endOf(a.recipe.recipeId, a.task.taskId);
         const bx = b.recipe.subLaneX(b.task.subLane);
-        const by = mainOf(b.task.startOffset);
+        const by = startOf(b.recipe.recipeId, b.task.taskId);
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
         const dA = roundedPath(
-          connectorPoints(ay, ax, my, mx, mainOf(a.task.startOffset), my).map(
+          connectorPoints(ay, ax, my, mx, g.cornerRadius).map(
             (p) => ({ x: p.cross, y: p.main }),
           ),
           g.cornerRadius,
         );
         const dB = roundedPath(
-          connectorPoints(my, mx, by, bx, my, mainOf(b.task.endOffset)).map(
+          connectorPoints(my, mx, by, bx, g.cornerRadius).map(
             (p) => ({ x: p.cross, y: p.main }),
           ),
           g.cornerRadius,
@@ -350,7 +456,7 @@ export function TubeMap({
       for (const t of r.tasks) {
         stationPos.set(`${r.recipeId}::${t.taskId}`, {
           x: r.subLaneX(t.subLane),
-          y: mainOf(t.startOffset),
+          y: startOf(r.recipeId, t.taskId),
         });
       }
     }
@@ -365,6 +471,8 @@ export function TubeMap({
       serveY,
       nowY,
       mainOf,
+      startOf,
+      endOf,
       stationPos,
       hops,
     };
@@ -502,14 +610,15 @@ export function TubeMap({
           {/* Per recipe: track segments, then connectors over them, then
               stations + labels on top. */}
           {recipes.map((recipe) => {
-            const stationY = (offset: number) => view.mainOf(offset);
+            const startY = (taskId: string) => view.startOf(recipe.recipeId, taskId);
+            const endY = (taskId: string) => view.endOf(recipe.recipeId, taskId);
             return (
               <g key={recipe.recipeId}>
                 {/* Track segments */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
-                  const y1 = stationY(task.startOffset);
-                  const y2 = stationY(task.endOffset);
+                  const y1 = startY(task.taskId);
+                  const y2 = endY(task.taskId);
                   const style = trackStyle(task.kind);
                   const title = (
                     <title>
@@ -562,8 +671,8 @@ export function TubeMap({
                     const sameLane = dep.subLane === task.subLane;
                     const key = `${recipe.recipeId}:${depId}->${task.taskId}`;
                     const depX = recipe.subLaneX(dep.subLane);
-                    const y1 = stationY(dep.endOffset);
-                    const y2 = stationY(task.startOffset);
+                    const y1 = endY(depId);
+                    const y2 = startY(task.taskId);
 
                     if (dormant && sameLane) {
                       // A straight idle stretch — hollow outlined track.
@@ -587,8 +696,7 @@ export function TubeMap({
                         depX,
                         y2,
                         recipe.subLaneX(task.subLane),
-                        stationY(dep.startOffset),
-                        stationY(task.endOffset),
+                        g.cornerRadius,
                       ).map((p) => ({ x: p.cross, y: p.main })),
                       g.cornerRadius,
                     );
@@ -634,7 +742,7 @@ export function TubeMap({
                 {/* Stations + labels */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
-                  const y = stationY(task.startOffset);
+                  const y = startY(task.taskId);
                   const food = ingredientsText(task.ingredients);
                   const lines: { text: string; kind: string }[] = [];
                   if (task.major && task.group) {

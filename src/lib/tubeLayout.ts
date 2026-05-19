@@ -143,68 +143,108 @@ export interface Pt {
 }
 
 /**
- * Points for a connector between two stations, in (main, cross) coordinates
- * (main is the time axis). A change of sub-lane leaves the source track at
- * EXACTLY its end as a 45° diagonal, then runs straight along the target
- * lane into the next station — so the connector joins the straight track
- * sections flush, with no leftover stub of segment past the fork. A short
- * collinear lead-in lets the corner round. `minMain`/`maxMain` bound how far
- * it may borrow into the two segments.
+ * Minimum main-axis span between two stations for a 45° cross-lane connector
+ * to draw cleanly. Five segments make a turn: straight → arc → 45° → arc →
+ * straight. The straights can be zero, but the middle three are mandatory.
+ * For a 45° diagonal the main-extent equals the cross-delta, and each arc
+ * needs `cornerTangent` of room along its straight neighbour — so the
+ * minimum is `2 * cornerTangent + crossDelta`. The layout pre-pass enforces
+ * this in pixels by stretching the time-warp when a tight chain would
+ * otherwise cram the corners.
+ */
+export function connectorMainSpan(
+  crossDelta: number,
+  cornerTangent: number,
+): number {
+  return 2 * cornerTangent + Math.abs(crossDelta);
+}
+
+/**
+ * 4-point polyline for a 45° cross-lane connector from (mainA, crossA) to
+ * (mainB, crossB). Locked at 45° always — the diagonal's main-extent equals
+ * its cross-extent. Any slack in the main span goes into the straight runs
+ * before and after the corners, distributed evenly so the diagonal sits
+ * centred. The corners P1 and P2 are spaced `cornerTangent` away from the
+ * straight segment's tangent point, so `roundedPath` can round them without
+ * clamping. If the layout left less room than `connectorMainSpan` requires,
+ * the trailing straight collapses defensively — the geometry warns by
+ * looking wrong, but the layout should have prevented this case.
  */
 export function connectorPoints(
   mainA: number,
   crossA: number,
   mainB: number,
   crossB: number,
-  minMain: number,
-  maxMain: number,
+  cornerTangent: number,
 ): { main: number; cross: number }[] {
-  if (Math.abs(crossB - crossA) < 0.5) {
+  const crossDelta = Math.abs(crossB - crossA);
+  if (crossDelta < 0.5) {
     return [
       { main: mainA, cross: crossA },
       { main: mainB, cross: crossB },
     ];
   }
-  const diag = Math.abs(crossB - crossA);
-  const leadIn = 16; // collinear run over the source segment, so the corner rounds
-  const s = Math.max(minMain, mainA - leadIn);
-  const diagEnd = Math.min(maxMain, mainA + diag);
-  const points = [
-    { main: s, cross: crossA }, // collinear with the source track
-    { main: mainA, cross: crossA }, // leave it exactly where the segment ends
-    { main: diagEnd, cross: crossB }, // 45° across to the target lane
-  ];
-  if (mainB > diagEnd + 1) {
-    // straight run along the target lane into its station
-    points.push({ main: Math.min(maxMain, mainB), cross: crossB });
+  const mainDelta = mainB - mainA;
+  const required = connectorMainSpan(crossDelta, cornerTangent);
+  let leadIn: number;
+  if (mainDelta >= required) {
+    // Slack distributed equally to the two straights — diagonal stays centred.
+    const slack = mainDelta - required;
+    leadIn = cornerTangent + slack / 2;
+  } else {
+    // Cramped: keep the lead-in arc honest at the cost of the trailing one.
+    // The layout pre-pass should have made room; this branch only protects
+    // against numerical edge cases.
+    leadIn = Math.max(0, Math.min(cornerTangent, mainDelta - crossDelta));
   }
-  return points;
+  return [
+    { main: mainA, cross: crossA },
+    { main: mainA + leadIn, cross: crossA },
+    { main: mainA + leadIn + crossDelta, cross: crossB },
+    { main: mainB, cross: crossB },
+  ];
 }
 
-function lerp(from: Pt, to: Pt, dist: number): Pt {
+function pointAlong(from: Pt, to: Pt, dist: number): Pt {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.hypot(dx, dy) || 1;
-  const t = Math.min(dist, len / 2) / len;
+  const t = Math.min(dist, len) / len;
   return { x: from.x + dx * t, y: from.y + dy * t };
 }
 
-/** SVG path through points with corners rounded by `radius`. */
+/**
+ * SVG path through points with corners rounded by `radius`. The tangent
+ * length consumed at each corner is `radius` on each adjacent segment,
+ * capped by:
+ *  - the full segment length for end segments (only one corner uses them),
+ *  - half the segment length for interior segments shared between two
+ *    corners (each takes its half).
+ * This avoids the previous quirk where end segments were over-clamped to
+ * len/2, producing visibly cramped lead-in and trailing arcs.
+ */
 export function roundedPath(points: Pt[], radius: number): string {
   if (points.length < 2) return '';
   if (points.length === 2) {
     return `M ${points[0].x} ${points[0].y} L ${points[1].x} ${points[1].y}`;
   }
+  const n = points.length;
+  const segLen = (i: number) =>
+    Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y);
   let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length - 1; i++) {
+  for (let i = 1; i < n - 1; i++) {
     const prev = points[i - 1];
     const curr = points[i];
     const next = points[i + 1];
-    const a = lerp(curr, prev, radius);
-    const b = lerp(curr, next, radius);
+    const backShared = i - 1 > 0;
+    const fwdShared = i + 1 < n - 1;
+    const backCap = backShared ? segLen(i - 1) / 2 : segLen(i - 1);
+    const fwdCap = fwdShared ? segLen(i) / 2 : segLen(i);
+    const a = pointAlong(curr, prev, Math.min(radius, backCap));
+    const b = pointAlong(curr, next, Math.min(radius, fwdCap));
     d += ` L ${a.x} ${a.y} Q ${curr.x} ${curr.y} ${b.x} ${b.y}`;
   }
-  const last = points[points.length - 1];
+  const last = points[n - 1];
   d += ` L ${last.x} ${last.y}`;
   return d;
 }

@@ -149,25 +149,17 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
         const mx = (ax + bx) / 2;
         const my = (ay + by) / 2;
         const dA = roundedPath(
-          connectorPoints(
-            ax,
-            ay,
-            mx,
-            my,
-            mainOf(a.task.startOffset),
-            mx,
-          ).map((p) => ({ x: p.main, y: p.cross })),
+          connectorPoints(ax, ay, mx, my, G.cornerRadius).map((p) => ({
+            x: p.main,
+            y: p.cross,
+          })),
           G.cornerRadius,
         );
         const dB = roundedPath(
-          connectorPoints(
-            mx,
-            my,
-            bx,
-            by,
-            mx,
-            mainOf(b.task.endOffset),
-          ).map((p) => ({ x: p.main, y: p.cross })),
+          connectorPoints(mx, my, bx, by, G.cornerRadius).map((p) => ({
+            x: p.main,
+            y: p.cross,
+          })),
           G.cornerRadius,
         );
         hops.push({
@@ -263,8 +255,7 @@ export function PlanSummary({ schedule, lanes, startMs, nowMs }: PlanSummaryProp
                     recipe.crossOf(dep.subLane),
                     view.mainOf(task.startOffset),
                     recipe.crossOf(task.subLane),
-                    view.mainOf(dep.startOffset),
-                    view.mainOf(task.endOffset),
+                    G.cornerRadius,
                   ).map((p) => ({ x: p.main, y: p.cross }));
                   const dashed =
                     !occupiesCook(task.kind) ||
