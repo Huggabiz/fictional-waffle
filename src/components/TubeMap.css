@@ -125,6 +125,13 @@
   font-weight: 400;
 }
 
+/* Faint tie-line from a station to its instruction label — needed because
+   a label may sit in the left or right column depending on free space. */
+.tube__leader {
+  stroke-width: 1;
+  opacity: 0.32;
+}
+
 @media (prefers-color-scheme: dark) {
   .tube__now,
   .tube__now-label {

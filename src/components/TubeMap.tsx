@@ -154,25 +154,48 @@ export function TubeMap({
     let bandLeft = g.leftAxis;
     const recipes = laid.map((lane) => {
       const color = lineColor(lane.laneIndex);
-      // With parallel tracks the left track's labels sit to its left and the
-      // rest to the right, so a left-hand label gutter is needed too.
-      const hasLeft = lane.subLaneCount > 1;
-      const leftGutter = hasLeft ? g.instrGutter : 0;
-      const trackLeft = bandLeft + leftGutter + g.trackPad;
+      // Every band keeps an instruction gutter on BOTH sides. The cook works
+      // one task at a time, so a station's label can sit on either side — we
+      // place it in whichever column has vertical room (preferring the
+      // right), so steps in quick succession don't stack their labels on top
+      // of one another.
+      const trackLeft = bandLeft + g.instrGutter + g.trackPad;
       const subLaneX = (subLane: number) => trackLeft + subLane * g.subLaneGap;
       const trackRight = subLaneX(lane.subLaneCount - 1);
+
+      const labelSide = new Map<string, 'left' | 'right'>();
+      let rightBottom = -Infinity;
+      let leftBottom = -Infinity;
+      for (const t of [...lane.tasks].sort(
+        (a, b) => a.startOffset - b.startOffset,
+      )) {
+        const lineCount =
+          1 +
+          (t.major && t.group ? 1 : 0) +
+          (ingredientsText(t.ingredients) ? 1 : 0);
+        const half = (lineCount * 15) / 2;
+        const y = mainOf(t.startOffset);
+        let chosen: 'left' | 'right';
+        if (y - half >= rightBottom) chosen = 'right';
+        else if (y - half >= leftBottom) chosen = 'left';
+        else chosen = rightBottom <= leftBottom ? 'right' : 'left';
+        if (chosen === 'right') rightBottom = y + half + 6;
+        else leftBottom = y + half + 6;
+        labelSide.set(t.taskId, chosen);
+      }
+
       const out = {
         ...lane,
         color,
         bandLeft,
         trackLeft,
-        hasLeft,
         subLaneX,
-        leftLabelX: bandLeft + leftGutter - 14,
+        labelSide,
+        leftLabelX: bandLeft + g.instrGutter - 14,
         rightLabelX: trackRight + 24,
       };
       bandLeft +=
-        leftGutter +
+        g.instrGutter +
         g.trackPad +
         (lane.subLaneCount - 1) * g.subLaneGap +
         g.trackPad +
@@ -460,14 +483,21 @@ export function TubeMap({
                     lines.length > 1
                       ? `${-(lines.length - 1) * 0.62}em`
                       : '0';
-                  // The left-most track labels to its left; everything else
-                  // to the right of the tracks.
-                  const onLeft = recipe.hasLeft && task.subLane === 0;
+                  // Side chosen by available room — see the memo above.
+                  const onLeft = recipe.labelSide.get(task.taskId) === 'left';
                   const labelX = onLeft
                     ? recipe.leftLabelX
                     : recipe.rightLabelX;
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
+                      <line
+                        className="tube__leader"
+                        x1={x}
+                        y1={y}
+                        x2={onLeft ? labelX + 4 : labelX - 4}
+                        y2={y}
+                        stroke={recipe.color}
+                      />
                       {task.major ? (
                         <circle
                           cx={x}
