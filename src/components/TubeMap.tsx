@@ -43,7 +43,13 @@ export function lineColor(index: number): string {
   return LINE_COLORS[index % LINE_COLORS.length];
 }
 
-const GEO = {
+// Geometry constants. Two profiles — desktop and compact (≤720px) —
+// so the map fits a phone without runaway horizontal scroll. cornerRadius
+// stays small enough that the 45° middle segment still reads as a
+// distinct straight between the two bends (R=14 with subLaneGap=34 leaves
+// ~20px of visible diagonal in the middle, instead of being swallowed by
+// the two corner arcs).
+const GEO_DESKTOP = {
   pxPerSec: 0.85,
   leftAxis: 52,
   mainStart: 56,
@@ -51,12 +57,18 @@ const GEO = {
   rightPad: 20,
   trackPad: 24,
   subLaneGap: 34,
-  instrGutter: 286,
-  cornerRadius: 20,
-  // Minimum drawn gap between adjacent task boundaries. The map stays mostly
-  // time-proportional, but — like a tube map bends geography — close stations
-  // get spaced out so they stay legible.
+  instrGutter: 240,
+  cornerRadius: 14,
   minEventGap: 30,
+};
+
+const GEO_COMPACT: typeof GEO_DESKTOP = {
+  ...GEO_DESKTOP,
+  leftAxis: 40,
+  trackPad: 16,
+  subLaneGap: 30,
+  instrGutter: 130,
+  cornerRadius: 12,
 };
 
 interface Lane {
@@ -129,9 +141,20 @@ export function TubeMap({
   focusTaskId,
 }: TubeMapProps) {
   const [mode, setMode] = useState<Mode>('journey');
+  const [compact, setCompact] = useState(() =>
+    typeof window !== 'undefined' &&
+    window.matchMedia('(max-width: 720px)').matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia('(max-width: 720px)');
+    const handler = (e: MediaQueryListEvent) => setCompact(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const view = useMemo(() => {
-    const g = GEO;
+    const g = compact ? GEO_COMPACT : GEO_DESKTOP;
     const isJourney = mode === 'journey';
     const total = Math.max(schedule.totalDuration, 60);
     const laid = layoutLanes(schedule, lanes);
@@ -434,17 +457,31 @@ export function TubeMap({
 
     const serveY = mainOf(total);
     const nowOffset = startMs !== null ? (nowMs - startMs) / 1000 : null;
-    // If the user has clicked Next, focusTaskId points at the active step —
-    // snap the now-line to that station's actual drawn y, because the
-    // per-station layout may have pushed it past the raw sec→y position
-    // returned by mainOf.
-    const focusStationY = focusTaskId
-      ? taskStartY.get(focusTaskId) ?? null
-      : null;
-    const nowY =
-      nowOffset !== null && nowOffset >= 0 && nowOffset <= total
-        ? focusStationY ?? mainOf(nowOffset)
-        : null;
+    // The now-line should crawl forward as time passes — including in
+    // manual mode, where effectiveNow rides the clock until the step's
+    // duration runs out, then sits at the end waiting for Next. When a
+    // task is in focus, interpolate within ITS drawn segment (startY →
+    // endY) so the line slides along the active step's track instead of
+    // jumping to the wrong y (the per-station layout means mainOf(sec)
+    // doesn't always line up with where the station was actually drawn).
+    let nowY: number | null = null;
+    if (nowOffset !== null && nowOffset >= 0 && nowOffset <= total) {
+      nowY = mainOf(nowOffset);
+      if (focusTaskId) {
+        const focusTask = schedule.tasks.find(
+          (t) => `${t.recipeId}::${t.taskId}` === focusTaskId,
+        );
+        const sY = taskStartY.get(focusTaskId);
+        const eY = taskEndY.get(focusTaskId);
+        if (focusTask && sY !== undefined && eY !== undefined && focusTask.duration > 0) {
+          const frac = Math.max(
+            0,
+            Math.min(1, (nowOffset - focusTask.startOffset) / focusTask.duration),
+          );
+          nowY = sY + frac * (eY - sY);
+        }
+      }
+    }
 
     // Journey: where the cook moves from one dish to another, a single
     // connector runs from the last hands-on task on dish A directly into
@@ -529,7 +566,7 @@ export function TubeMap({
       stationPos,
       hops,
     };
-  }, [schedule, lanes, startMs, nowMs, mode, focusTaskId]);
+  }, [schedule, lanes, startMs, nowMs, mode, focusTaskId, compact]);
 
   // Re-centre the canvas on the focused task whenever it changes (a Next
   // press, or an auto-advance) — not on every now-tick, so the cook can
