@@ -743,14 +743,30 @@ export function TubeMap({
                   );
                 })}
 
-                {/* Connectors — over the track. A real idle gap between two
-                    of a dish's steps is the dish sitting DORMANT (hollow), not
-                    monitored: the chopped tomatoes aren't going anywhere. */}
+                {/* Connectors — over the track. Dormant (hollow) when the
+                    dish is just sitting between its own steps: either a
+                    real idle gap, OR the cook has stepped away to another
+                    recipe's hands-on task during the gap. The cross-
+                    recipe check matters because the schedule interleaves
+                    short hops the gap-length alone wouldn't catch — those
+                    used to draw as solid focus on both recipes at once,
+                    which read as "active on two dishes simultaneously"
+                    even though the cook can only be on one. */}
                 {recipe.tasks.flatMap((task) =>
                   task.dependsOn.flatMap((depId) => {
                     const dep = recipe.byTaskId.get(depId);
                     if (!dep) return [];
-                    const dormant = task.startOffset - dep.endOffset > 45;
+                    const gap = task.startOffset - dep.endOffset;
+                    const crossOccupied =
+                      gap > 0 &&
+                      schedule.tasks.some(
+                        (o) =>
+                          o.recipeId !== recipe.recipeId &&
+                          occupiesCook(o.kind) &&
+                          o.startOffset < task.startOffset &&
+                          o.startOffset + o.duration > dep.endOffset,
+                      );
+                    const dormant = crossOccupied || gap > 45;
                     const sameLane = dep.subLane === task.subLane;
                     const key = `${recipe.recipeId}:${depId}->${task.taskId}`;
                     const depX = recipe.subLaneX(dep.subLane);
