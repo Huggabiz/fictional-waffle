@@ -145,18 +145,21 @@ export interface Pt {
 /**
  * Minimum main-axis span between two stations for a 45° cross-lane connector
  * to draw cleanly. Five segments make a turn: straight → arc → 45° → arc →
- * straight. The straights can be zero, but the middle three are mandatory.
- * For a 45° diagonal the main-extent equals the cross-delta, and each arc
- * needs `cornerTangent` of room along its straight neighbour — so the
- * minimum is `2 * cornerTangent + crossDelta`. The layout pre-pass enforces
- * this in pixels by stretching the time-warp when a tight chain would
- * otherwise cram the corners.
+ * straight. With placement='destination' the leading straight needs to be
+ * AT LEAST `cornerTangent` long beyond the arc, otherwise the arc consumes
+ * the whole leadIn segment and the curve starts immediately at the source
+ * with no visible vertical before it — reads as a sharp corner. So the
+ * minimum is `3 * cornerTangent + crossDelta` (one tangent for the visible
+ * leading straight, two for the two arcs), with the trailing arc landing
+ * right at the destination station (which serves as its visual end-cap).
+ * The layout pre-pass enforces this by stretching the time-warp when a
+ * tight chain would otherwise hide the bend.
  */
 export function connectorMainSpan(
   crossDelta: number,
   cornerTangent: number,
 ): number {
-  return 2 * cornerTangent + Math.abs(crossDelta);
+  return 3 * cornerTangent + Math.abs(crossDelta);
 }
 
 /**
