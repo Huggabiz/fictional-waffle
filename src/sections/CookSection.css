@@ -22,39 +22,37 @@
   padding: var(--space-3);
 }
 
-.cook__hud {
-  position: absolute;
-  top: var(--space-4);
-  right: var(--space-4);
-  z-index: 5;
+/* Slim header strip above the canvas — non-overlapping, always visible.
+   Replaces the old floating HUD that sat on top of the tube map's legend. */
+.cook__header {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  backdrop-filter: blur(3px);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
-  pointer-events: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-size: 13px;
 }
 
-.cook__hud-row {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-4);
-  font-size: 12px;
+.cook__header-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
-.cook__hud-k {
+.cook__header-k {
   text-transform: uppercase;
   letter-spacing: 0.07em;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--color-text-muted);
-  font-weight: 600;
+  font-family: var(--font-sans);
 }
 
-.cook__hud-v {
+.cook__header-v {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .cook__warn {
@@ -288,20 +286,31 @@
   color: var(--color-accent-contrast);
 }
 
-/* Phone — a compact banner across the bottom */
+/* Phone — instruction wraps onto its own row so the action text gets
+   the full width and the timer + step controls share a tidier row
+   beneath. The single-row desktop layout always felt cramped here. */
 @media (max-width: 720px) {
   .cook__bar {
-    gap: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
     padding: var(--space-3) var(--space-3);
   }
+  .cook__bar-main {
+    flex-basis: 100%;
+  }
   .cook__bar-action {
-    font-size: 15px;
+    font-size: 17px;
   }
   .cook__bar-sub {
-    font-size: 12px;
+    font-size: 13px;
+    white-space: normal;
+  }
+  .cook__bar-timer {
+    flex: 1;
+    text-align: left;
   }
   .cook__bar-timer-value {
-    font-size: 24px;
+    font-size: 26px;
   }
   .cook__next {
     font-size: 16px;
@@ -310,5 +319,9 @@
   .cook__prev {
     font-size: 13px;
     padding: var(--space-2);
+  }
+  .cook__header {
+    padding: var(--space-2) var(--space-3);
+    font-size: 12px;
   }
 }

@@ -56,12 +56,13 @@ export function CookSection() {
   const manualStep = activePlan?.manualStep ?? 0;
 
   // The single-cook sequence — the hands-on tasks, in cooking order.
+  // Every scheduled step is a stop point in manual mode — including
+  // passive ones like "oven preheats" or "rest the dough". The cook is
+  // told to acknowledge each before moving on; nothing is skipped.
   const handsOn = useMemo(
     () =>
       schedule
-        ? schedule.tasks
-            .filter((t) => occupiesCook(t.kind))
-            .sort((a, b) => a.startOffset - b.startOffset)
+        ? [...schedule.tasks].sort((a, b) => a.startOffset - b.startOffset)
         : [],
     [schedule],
   );
@@ -330,31 +331,31 @@ export function CookSection() {
 
   return (
     <div className="cook">
+      <header className="cook__header" aria-label="Serve stats">
+        <span className="cook__header-pill">
+          <span className="cook__header-k">Start</span>
+          <span className="cook__header-v">
+            {startMs !== null
+              ? formatServeAt(new Date(startMs).toISOString())
+              : '—'}
+          </span>
+        </span>
+        <span className="cook__header-pill">
+          <span className="cook__header-k">Serve</span>
+          <span className="cook__header-v">
+            {serveMs !== null
+              ? formatServeAt(new Date(serveMs).toISOString())
+              : 'Not set'}
+          </span>
+        </span>
+        <span className="cook__header-pill">
+          <span className="cook__header-k">Total</span>
+          <span className="cook__header-v">
+            {formatDuration(schedule.totalDuration)}
+          </span>
+        </span>
+      </header>
       <div className="cook__canvas">
-        <div className="cook__hud" aria-label="Serve stats">
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Serve</span>
-            <span className="cook__hud-v">
-              {serveMs !== null
-                ? formatServeAt(new Date(serveMs).toISOString())
-                : 'Not set'}
-            </span>
-          </div>
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Start</span>
-            <span className="cook__hud-v">
-              {startMs !== null
-                ? formatServeAt(new Date(startMs).toISOString())
-                : '—'}
-            </span>
-          </div>
-          <div className="cook__hud-row">
-            <span className="cook__hud-k">Total</span>
-            <span className="cook__hud-v">
-              {formatDuration(schedule.totalDuration)}
-            </span>
-          </div>
-        </div>
         <TubeMap
           schedule={schedule}
           lanes={lanes}

@@ -128,7 +128,7 @@ export function TubeMap({
   nowMs,
   focusTaskId,
 }: TubeMapProps) {
-  const [mode, setMode] = useState<Mode>('tracks');
+  const [mode, setMode] = useState<Mode>('journey');
   const scrollRef = useRef<HTMLDivElement>(null);
   const view = useMemo(() => {
     const g = GEO;
@@ -304,11 +304,13 @@ export function TubeMap({
         const fromIdx = endIdx.get(a.taskKey);
         const toIdx = startIdx.get(b.taskKey);
         if (fromIdx === undefined || toIdx === undefined) continue;
-        // Two halves: each needs 2R + cross/2, summed → 4R + cross.
+        // One bend pair: the connector goes straight from a's end into
+        // b's first station (which serves as the transfer point), so the
+        // same budget as any cross-lane connector.
         constraints.push({
           fromIdx,
           toIdx,
-          minPx: 4 * g.cornerRadius + cross,
+          minPx: connectorMainSpan(cross, g.cornerRadius),
         });
       }
     }
@@ -444,16 +446,17 @@ export function TubeMap({
         ? focusStationY ?? mainOf(nowOffset)
         : null;
 
-    // Journey: where the cook moves from one dish to another, the two lines
-    // converge at a shared interchange. Walk the hands-on tasks in cooking
-    // order; a change of dish between two consecutive ones is a hop.
+    // Journey: where the cook moves from one dish to another, a single
+    // connector runs from the last hands-on task on dish A directly into
+    // dish B's next station — that station IS the transfer point. The
+    // line is split at the bend so the half leaving A wears A's colour
+    // and the half arriving at B wears B's, signalling the handover
+    // without a separate interchange dot.
     interface Hop {
       dA: string;
       colorA: string;
       dB: string;
       colorB: string;
-      mx: number;
-      my: number;
     }
     const hops: Hop[] = [];
     if (isJourney) {
@@ -472,30 +475,31 @@ export function TubeMap({
         const ay = endOf(a.recipe.recipeId, a.task.taskId);
         const bx = b.recipe.subLaneX(b.task.subLane);
         const by = startOf(b.recipe.recipeId, b.task.taskId);
-        const mx = (ax + bx) / 2;
-        const my = (ay + by) / 2;
-        // dA converges into the interchange (bend at midpoint end), dB
-        // diverges from it (bend at midpoint start). Together they form a
-        // clean X at the interchange rather than two centred zigzags.
-        const dA = roundedPath(
-          connectorPoints(ay, ax, my, mx, g.cornerRadius, 'destination').map(
-            (p) => ({ x: p.cross, y: p.main }),
-          ),
-          g.cornerRadius,
-        );
-        const dB = roundedPath(
-          connectorPoints(my, mx, by, bx, g.cornerRadius, 'source').map(
-            (p) => ({ x: p.cross, y: p.main }),
-          ),
-          g.cornerRadius,
-        );
+        const pts = connectorPoints(ay, ax, by, bx, g.cornerRadius);
+        // Split into two halves at the visual handover point: the bend
+        // leaving the source column (corner1) for the 4-point case, or
+        // the geometric midpoint for the same-column 2-point case.
+        let dAd: string;
+        let dBd: string;
+        if (pts.length === 4) {
+          const [p0, p1, p2, p3] = pts;
+          dAd = `M ${p0.cross} ${p0.main} L ${p1.cross} ${p1.main}`;
+          dBd = roundedPath(
+            [p1, p2, p3].map((p) => ({ x: p.cross, y: p.main })),
+            g.cornerRadius,
+          );
+        } else {
+          const [p0, p1] = pts;
+          const mx = (p0.cross + p1.cross) / 2;
+          const my = (p0.main + p1.main) / 2;
+          dAd = `M ${p0.cross} ${p0.main} L ${mx} ${my}`;
+          dBd = `M ${mx} ${my} L ${p1.cross} ${p1.main}`;
+        }
         hops.push({
-          dA,
+          dA: dAd,
           colorA: a.recipe.color,
-          dB,
+          dB: dBd,
           colorB: b.recipe.color,
-          mx,
-          my,
         });
       }
     }
@@ -656,13 +660,13 @@ export function TubeMap({
             </text>
           ))}
 
-          {/* Per recipe: track segments, then connectors over them, then
-              stations + labels on top. */}
+          {/* Layer 1: track segments + connectors per recipe. Stations
+              come later so they never sit under a track or a hop. */}
           {recipes.map((recipe) => {
             const startY = (taskId: string) => view.startOf(recipe.recipeId, taskId);
             const endY = (taskId: string) => view.endOf(recipe.recipeId, taskId);
             return (
-              <g key={recipe.recipeId}>
+              <g key={`tracks-${recipe.recipeId}`}>
                 {/* Track segments */}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
@@ -788,7 +792,41 @@ export function TubeMap({
                   }),
                 )}
 
-                {/* Stations + labels */}
+              </g>
+            );
+          })}
+
+          {/* Layer 2: journey hops. A single bend connector per hop
+              terminating at the next recipe's first station — that
+              station is the transfer point. Colour split at the bend
+              shows the handover from one dish to the next. */}
+          {view.hops.map((hop, i) => (
+            <g key={`hop-${i}`}>
+              <path
+                d={hop.dA}
+                fill="none"
+                stroke={hop.colorA}
+                strokeWidth={8}
+                strokeLinecap="butt"
+                strokeLinejoin="round"
+              />
+              <path
+                d={hop.dB}
+                fill="none"
+                stroke={hop.colorB}
+                strokeWidth={8}
+                strokeLinecap="butt"
+                strokeLinejoin="round"
+              />
+            </g>
+          ))}
+
+          {/* Layer 3: stations + labels per recipe, drawn last so they
+              sit on top of tracks, connectors, and hops. */}
+          {recipes.map((recipe) => {
+            const startY = (taskId: string) => view.startOf(recipe.recipeId, taskId);
+            return (
+              <g key={`stations-${recipe.recipeId}`}>
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
                   const y = startY(task.taskId);
@@ -803,7 +841,6 @@ export function TubeMap({
                     lines.length > 1
                       ? `${-(lines.length - 1) * 0.62}em`
                       : '0';
-                  // Side chosen by available room — see the memo above.
                   const onLeft =
                     recipe.labelSide.get(
                       `${recipe.recipeId}::${task.taskId}`,
@@ -831,7 +868,6 @@ export function TubeMap({
                           strokeWidth={3.5}
                         />
                       ) : (
-                        // Minor stop — a tick across the track, drawn on top.
                         <line
                           x1={x - 10}
                           y1={y}
@@ -866,35 +902,6 @@ export function TubeMap({
               </g>
             );
           })}
-
-          {/* Journey: where the cook hops dishes, the lines converge at a
-              shared interchange, each keeping its own colour. */}
-          {view.hops.map((hop, i) => (
-            <g key={`hop-${i}`}>
-              <path
-                d={hop.dA}
-                fill="none"
-                stroke={hop.colorA}
-                strokeWidth={8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d={hop.dB}
-                fill="none"
-                stroke={hop.colorB}
-                strokeWidth={8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle
-                className="tube__interchange"
-                cx={hop.mx}
-                cy={hop.my}
-                r={9}
-              />
-            </g>
-          ))}
 
           {/* "You are here" */}
           {view.nowY !== null && (
