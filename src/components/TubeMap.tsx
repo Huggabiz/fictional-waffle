@@ -484,16 +484,21 @@ export function TubeMap({
     }
 
     // Journey: where the cook moves from one dish to another, a single
-    // connector runs from the last hands-on task on dish A directly into
-    // dish B's next station — that station IS the transfer point. The
-    // line is split at the bend so the half leaving A wears A's colour
-    // and the half arriving at B wears B's, signalling the handover
-    // without a separate interchange dot.
+    // continuous connector runs from the last hands-on task on dish A
+    // directly into dish B's next station — that station IS the transfer
+    // point. One roundedPath (not two) so the bend leaving A is properly
+    // curved; the previous split-at-corner approach left that corner
+    // sharp because two strokes met at a point with no quadratic between
+    // them. Handover is shown via a linear gradient from A's colour to
+    // B's along the path's straight-line direction.
     interface Hop {
-      dA: string;
+      d: string;
       colorA: string;
-      dB: string;
       colorB: string;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
     }
     const hops: Hop[] = [];
     if (isJourney) {
@@ -513,30 +518,18 @@ export function TubeMap({
         const bx = b.recipe.subLaneX(b.task.subLane);
         const by = startOf(b.recipe.recipeId, b.task.taskId);
         const pts = connectorPoints(ay, ax, by, bx, g.cornerRadius);
-        // Split into two halves at the visual handover point: the bend
-        // leaving the source column (corner1) for the 4-point case, or
-        // the geometric midpoint for the same-column 2-point case.
-        let dAd: string;
-        let dBd: string;
-        if (pts.length === 4) {
-          const [p0, p1, p2, p3] = pts;
-          dAd = `M ${p0.cross} ${p0.main} L ${p1.cross} ${p1.main}`;
-          dBd = roundedPath(
-            [p1, p2, p3].map((p) => ({ x: p.cross, y: p.main })),
-            g.cornerRadius,
-          );
-        } else {
-          const [p0, p1] = pts;
-          const mx = (p0.cross + p1.cross) / 2;
-          const my = (p0.main + p1.main) / 2;
-          dAd = `M ${p0.cross} ${p0.main} L ${mx} ${my}`;
-          dBd = `M ${mx} ${my} L ${p1.cross} ${p1.main}`;
-        }
+        const d = roundedPath(
+          pts.map((p) => ({ x: p.cross, y: p.main })),
+          g.cornerRadius,
+        );
         hops.push({
-          dA: dAd,
+          d,
           colorA: a.recipe.color,
-          dB: dBd,
           colorB: b.recipe.color,
+          x1: ax,
+          y1: ay,
+          x2: bx,
+          y2: by,
         });
       }
     }
@@ -833,29 +826,38 @@ export function TubeMap({
             );
           })}
 
-          {/* Layer 2: journey hops. A single bend connector per hop
-              terminating at the next recipe's first station — that
-              station is the transfer point. Colour split at the bend
-              shows the handover from one dish to the next. */}
+          {/* Layer 2: journey hops. One smoothly-rounded connector per
+              hop, stroked with a linear gradient from the source colour
+              to the destination colour — so the handover reads
+              continuously along the line rather than at a sharp split
+              point. Gradients are user-space so they follow the path's
+              actual start/end coordinates. */}
+          <defs>
+            {view.hops.map((hop, i) => (
+              <linearGradient
+                key={`hop-grad-${i}`}
+                id={`tube-hop-grad-${i}`}
+                gradientUnits="userSpaceOnUse"
+                x1={hop.x1}
+                y1={hop.y1}
+                x2={hop.x2}
+                y2={hop.y2}
+              >
+                <stop offset="0%" stopColor={hop.colorA} />
+                <stop offset="100%" stopColor={hop.colorB} />
+              </linearGradient>
+            ))}
+          </defs>
           {view.hops.map((hop, i) => (
-            <g key={`hop-${i}`}>
-              <path
-                d={hop.dA}
-                fill="none"
-                stroke={hop.colorA}
-                strokeWidth={8}
-                strokeLinecap="butt"
-                strokeLinejoin="round"
-              />
-              <path
-                d={hop.dB}
-                fill="none"
-                stroke={hop.colorB}
-                strokeWidth={8}
-                strokeLinecap="butt"
-                strokeLinejoin="round"
-              />
-            </g>
+            <path
+              key={`hop-${i}`}
+              d={hop.d}
+              fill="none"
+              stroke={`url(#tube-hop-grad-${i})`}
+              strokeWidth={8}
+              strokeLinecap="butt"
+              strokeLinejoin="round"
+            />
           ))}
 
           {/* Layer 3: stations + labels per recipe, drawn last so they
