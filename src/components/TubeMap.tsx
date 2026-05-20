@@ -862,8 +862,35 @@ export function TubeMap({
               sit on top of tracks, connectors, and hops. */}
           {recipes.map((recipe) => {
             const startY = (taskId: string) => view.startOf(recipe.recipeId, taskId);
+            const endY = (taskId: string) => view.endOf(recipe.recipeId, taskId);
+            // Terminal tasks — no one in this recipe depends on them. Each
+            // gets a T-cap drawn at its endY, the way a tube map closes
+            // off a line. Reads as "this dish ends here."
+            const hasSuccessor = new Set<string>();
+            for (const t of recipe.tasks) {
+              for (const dep of t.dependsOn) hasSuccessor.add(dep);
+            }
+            const terminals = recipe.tasks.filter(
+              (t) => !hasSuccessor.has(t.taskId),
+            );
             return (
               <g key={`stations-${recipe.recipeId}`}>
+                {terminals.map((t) => {
+                  const x = recipe.subLaneX(t.subLane);
+                  const y = endY(t.taskId);
+                  return (
+                    <line
+                      key={`term-${recipe.recipeId}:${t.taskId}`}
+                      x1={x - 13}
+                      y1={y}
+                      x2={x + 13}
+                      y2={y}
+                      stroke={recipe.color}
+                      strokeWidth={5}
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
                 {recipe.tasks.map((task) => {
                   const x = recipe.subLaneX(task.subLane);
                   const y = startY(task.taskId);
