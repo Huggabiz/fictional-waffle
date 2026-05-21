@@ -24,7 +24,18 @@ import './TubeMap.css';
 //  - dormant (rest)        — hollow outlined track; left to its own devices.
 const DASH = '9 7';
 
-function trackStyle(kind: TaskKind): 'focus' | 'monitor' | 'dormant' {
+// A prep/active task that's still in the future (ahead of where the
+// cook actually is) reads visually as monitor — the dish's current
+// passive state — until focus lands on it. That focus pop IS the
+// trigger moment: solid stroke means "do this now". Without this,
+// a future "add the spaghetti" task drawn solid between two passive
+// boils looked like the line had gone active on its own, without
+// the cook ever being prompted.
+function trackStyle(
+  kind: TaskKind,
+  isFuture = false,
+): 'focus' | 'monitor' | 'dormant' {
+  if (isFuture && (kind === 'prep' || kind === 'active')) return 'monitor';
   if (kind === 'prep' || kind === 'active') return 'focus';
   if (kind === 'passive') return 'monitor';
   return 'dormant';
@@ -675,6 +686,20 @@ export function TubeMap({
       // of the bundle, and vice versa.
       return onLeft ? b.right + illBuffer + illR : b.left - illBuffer - illR;
     };
+    // Tasks whose drawn y is past the focused task's start — i.e. ahead
+    // of where the cook actually is. trackStyle uses this to keep
+    // prep/active tasks in monitor visual until the cook is told to do
+    // them. Empty when no focus (preview mode = show full plan natural).
+    const futureKeys = new Set<string>();
+    if (focusTaskId) {
+      const focusY = taskStartY.get(focusTaskId);
+      if (focusY !== undefined) {
+        for (const [key, ty] of taskStartY) {
+          if (ty > focusY + 0.5) futureKeys.add(key);
+        }
+      }
+    }
+
     const stationPos = new Map<
       string,
       { x: number; y: number; centerX: number }
@@ -717,6 +742,7 @@ export function TubeMap({
       hops,
       illR,
       illXFor,
+      futureKeys,
     };
   }, [schedule, lanes, startMs, nowMs, mode, focusTaskId, compact, containerW]);
 
@@ -861,7 +887,10 @@ export function TubeMap({
                   const x = recipe.subLaneX(task.subLane);
                   const y1 = startY(task.taskId);
                   const y2 = endY(task.taskId);
-                  const style = trackStyle(task.kind);
+                  const isFuture = view.futureKeys.has(
+                    `${recipe.recipeId}::${task.taskId}`,
+                  );
+                  const style = trackStyle(task.kind, isFuture);
                   const title = (
                     <title>
                       {task.label} · {task.kind} ·{' '}
