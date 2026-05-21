@@ -153,11 +153,56 @@ export function TubeMap({
     return () => mql.removeEventListener('change', handler);
   }, []);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // Container width drives a dynamic label gutter — so on phone, the SVG
+  // shrinks its label columns to fit the viewport (labels then wrap onto
+  // multiple lines via foreignObject) instead of forcing a horizontal scroll.
+  const [containerW, setContainerW] = useState<number>(() =>
+    typeof window === 'undefined' ? 1024 : window.innerWidth,
+  );
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setContainerW(e.contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const view = useMemo(() => {
-    const g = compact ? GEO_COMPACT : GEO_DESKTOP;
+    const baseG = compact ? GEO_COMPACT : GEO_DESKTOP;
     const isJourney = mode === 'journey';
     const total = Math.max(schedule.totalDuration, 60);
     const laid = layoutLanes(schedule, lanes);
+
+    // Fit-to-width: solve for the label gutter that makes the SVG width
+    // equal the container width. Below the minimum, accept a small
+    // horizontal scroll — beats labels too narrow to read.
+    const minGutter = compact ? 88 : 140;
+    let fittedGutter: number;
+    if (isJourney) {
+      let totalSubLanes = 0;
+      for (const lane of laid) totalSubLanes += lane.subLaneCount;
+      const fixed =
+        baseG.leftAxis +
+        2 * baseG.trackPad +
+        Math.max(0, totalSubLanes - 1) * baseG.subLaneGap +
+        baseG.rightPad;
+      fittedGutter = (containerW - fixed) / 2;
+    } else {
+      const numBands = Math.max(1, laid.length);
+      const subLaneTotal = laid.reduce(
+        (s, lane) => s + Math.max(0, lane.subLaneCount - 1) * baseG.subLaneGap,
+        0,
+      );
+      const fixed =
+        baseG.leftAxis +
+        numBands * 2 * baseG.trackPad +
+        subLaneTotal +
+        baseG.rightPad;
+      fittedGutter = (containerW - fixed) / (2 * numBands);
+    }
+    const gutter = Math.max(minGutter, Math.min(baseG.instrGutter, fittedGutter));
+    const g = { ...baseG, instrGutter: gutter };
 
     // --- Pass 1: cross-axis layout. Each recipe's lane positions don't
     // depend on the time-warp, so they're computed first — the per-connector
@@ -534,12 +579,26 @@ export function TubeMap({
       }
     }
 
-    const stationPos = new Map<string, { x: number; y: number }>();
+    // stationPos drives auto-centring on focus changes. centerX is the
+    // midpoint of the station and its label's far edge — so a Next press
+    // brings the WHOLE row (marker + instruction text) into view, not
+    // just the station marker with the label half off-screen.
+    const labelMaxW = Math.max(0, g.instrGutter - 26);
+    const stationPos = new Map<
+      string,
+      { x: number; y: number; centerX: number }
+    >();
     for (const r of recipes) {
       for (const t of r.tasks) {
+        const sx = r.subLaneX(t.subLane);
+        const onLeft =
+          r.labelSide.get(`${r.recipeId}::${t.taskId}`) === 'left';
+        const labelX = onLeft ? r.leftLabelX : r.rightLabelX;
+        const farEdge = onLeft ? labelX - labelMaxW : labelX + labelMaxW;
         stationPos.set(`${r.recipeId}::${t.taskId}`, {
-          x: r.subLaneX(t.subLane),
+          x: sx,
           y: startOf(r.recipeId, t.taskId),
+          centerX: (sx + farEdge) / 2,
         });
       }
     }
@@ -559,7 +618,7 @@ export function TubeMap({
       stationPos,
       hops,
     };
-  }, [schedule, lanes, startMs, nowMs, mode, focusTaskId, compact]);
+  }, [schedule, lanes, startMs, nowMs, mode, focusTaskId, compact, containerW]);
 
   // Re-centre the canvas on the focused task whenever it changes (a Next
   // press, or an auto-advance) — not on every now-tick, so the cook can
@@ -570,7 +629,7 @@ export function TubeMap({
     const el = scrollRef.current;
     if (!pos || !el) return;
     el.scrollTo({
-      left: pos.x - el.clientWidth / 2,
+      left: pos.centerX - el.clientWidth / 2,
       top: pos.y - el.clientHeight / 2,
       behavior: 'smooth',
     });
@@ -919,10 +978,6 @@ export function TubeMap({
                   }
                   lines.push({ text: task.label, kind: 'action' });
                   if (food) lines.push({ text: food, kind: 'food' });
-                  const firstDy =
-                    lines.length > 1
-                      ? `${-(lines.length - 1) * 0.62}em`
-                      : '0';
                   const onLeft =
                     recipe.labelSide.get(
                       `${recipe.recipeId}::${task.taskId}`,
@@ -930,6 +985,12 @@ export function TubeMap({
                   const labelX = onLeft
                     ? recipe.leftLabelX
                     : recipe.rightLabelX;
+                  // Labels live in an HTML foreignObject so they wrap onto
+                  // multiple lines when the gutter is narrow (phone) — SVG
+                  // text doesn't auto-wrap. overflow="visible" lets a
+                  // taller-than-expected label spill out cleanly.
+                  const lblW = Math.max(0, g.instrGutter - 26);
+                  const lblH = 84;
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
                       <line
@@ -960,24 +1021,35 @@ export function TubeMap({
                           strokeLinecap="butt"
                         />
                       )}
-                      <text
-                        x={labelX}
-                        y={y}
-                        textAnchor={onLeft ? 'end' : 'start'}
-                        dominantBaseline="middle"
+                      <foreignObject
+                        x={onLeft ? labelX - lblW : labelX}
+                        y={y - lblH / 2}
+                        width={lblW}
+                        height={lblH}
+                        overflow="visible"
                       >
-                        {lines.map((line, i) => (
-                          <tspan
-                            key={i}
-                            x={labelX}
-                            dy={i === 0 ? firstDy : '1.25em'}
-                            className={`tube__ln tube__ln--${line.kind}`}
-                            fill={line.kind === 'title' ? recipe.color : undefined}
-                          >
-                            {line.text}
-                          </tspan>
-                        ))}
-                      </text>
+                        <div
+                          className={
+                            onLeft
+                              ? 'tube__lbl tube__lbl--left'
+                              : 'tube__lbl tube__lbl--right'
+                          }
+                        >
+                          {lines.map((line, i) => (
+                            <div
+                              key={i}
+                              className={`tube__ln tube__ln--${line.kind}`}
+                              style={
+                                line.kind === 'title'
+                                  ? { color: recipe.color }
+                                  : undefined
+                              }
+                            >
+                              {line.text}
+                            </div>
+                          ))}
+                        </div>
+                      </foreignObject>
                     </g>
                   );
                 })}

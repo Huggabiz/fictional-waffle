@@ -136,8 +136,22 @@
   letter-spacing: -0.01em;
 }
 
-/* The label block beside a station: phase title, then the action in bold,
-   then ingredients in light grey. */
+/* Station labels live in <foreignObject> so they wrap on narrow screens.
+   The container flex-centres the lines vertically against the station's y;
+   --left / --right pick the column edge the text aligns to. */
+.tube__lbl {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  line-height: 1.2;
+  overflow: visible;
+}
+.tube__lbl--left { text-align: end; }
+.tube__lbl--right { text-align: start; }
+
+/* Phase title, action, ingredients — same hierarchy as before. */
 .tube__ln--title {
   font-size: 11px;
   font-weight: 700;
@@ -145,14 +159,14 @@
 }
 
 .tube__ln--action {
-  fill: var(--color-text);
-  font-size: 12px;
+  color: var(--color-text);
+  font-size: 13px;
   font-weight: 700;
 }
 
 .tube__ln--food {
-  fill: var(--color-text-muted);
-  font-size: 10.5px;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
   font-weight: 400;
 }
 
