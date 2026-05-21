@@ -427,7 +427,22 @@ export function TubeMap({
       return loY + frac * (hiY - loY);
     };
 
-    // --- Pass 4: label sides. Uses station ys to avoid stacking labels.
+    // --- Pass 4: label sides. Uses station ys AND wrap-aware label
+    // height estimates so labels in narrow gutters (where they wrap to
+    // multiple visual lines) don't get stacked too tightly.
+    const labelW = Math.max(0, g.instrGutter - 26);
+    const charsPerLine = Math.max(8, Math.floor(labelW / 6.5));
+    const lineH = 15.6;
+    const visualLines = (text: string) =>
+      Math.max(1, Math.ceil(text.length / charsPerLine));
+    const labelHeight = (task: SubLanedTask): number => {
+      let lines = 0;
+      if (task.major && task.group) lines += visualLines(task.group);
+      lines += visualLines(task.label);
+      const food = ingredientsText(task.ingredients);
+      if (food) lines += visualLines(food);
+      return Math.max(lineH, lines * lineH);
+    };
     const assignSides = (
       entries: { recipeId: string; task: SubLanedTask }[],
     ): Map<string, 'left' | 'right'> => {
@@ -437,11 +452,7 @@ export function TubeMap({
       for (const { recipeId, task } of [...entries].sort(
         (a, b) => a.task.startOffset - b.task.startOffset,
       )) {
-        const lineCount =
-          1 +
-          (task.major && task.group ? 1 : 0) +
-          (ingredientsText(task.ingredients) ? 1 : 0);
-        const half = (lineCount * 15) / 2;
+        const half = labelHeight(task) / 2;
         const y = startOf(recipeId, task.taskId);
         let chosen: 'left' | 'right';
         if (y - half >= rightBottom) chosen = 'right';
@@ -482,6 +493,56 @@ export function TubeMap({
         leftLabelX: lp.leftLabelX,
         rightLabelX: lp.rightLabelX,
       }));
+    }
+
+    // Label-clearance pass. With labels wrapping in narrow gutters they
+    // can take 60–100px of vertical room each — well past the height
+    // assignSides could pack two on the same side at the schedule's
+    // natural pace. Push events apart per-side when consecutive labels
+    // would overlap. Time bends but no instruction sits on another.
+    {
+      type Item = { idx: number; y: number; h: number };
+      const bySide: Record<'left' | 'right', Item[]> = { left: [], right: [] };
+      for (const r of recipes) {
+        for (const t of r.tasks) {
+          const key = `${r.recipeId}::${t.taskId}`;
+          const side = r.labelSide.get(key);
+          const i = startIdx.get(key);
+          if (!side || i === undefined) continue;
+          bySide[side].push({ idx: i, y: drawnYs[i], h: labelHeight(t) });
+        }
+      }
+      const labelConstraints: { fromIdx: number; toIdx: number; minPx: number }[] = [];
+      for (const side of ['left', 'right'] as const) {
+        const items = bySide[side].sort((a, b) => a.y - b.y);
+        for (let k = 0; k < items.length - 1; k++) {
+          const a = items[k];
+          const b = items[k + 1];
+          labelConstraints.push({
+            fromIdx: a.idx,
+            toIdx: b.idx,
+            minPx: (a.h + b.h) / 2 + 6,
+          });
+        }
+      }
+      labelConstraints.sort((a, b) => a.fromIdx - b.fromIdx || a.toIdx - b.toIdx);
+      for (const c of labelConstraints) {
+        const have = drawnYs[c.toIdx] - drawnYs[c.fromIdx];
+        if (have < c.minPx) {
+          const deficit = c.minPx - have;
+          for (let i = c.toIdx; i < drawnYs.length; i++) drawnYs[i] += deficit;
+        }
+      }
+      // Re-derive per-station ys and the time axis after the push.
+      for (const [k, i] of startIdx)
+        taskStartY.set(k, g.mainStart + drawnYs[i]);
+      for (const [k, i] of endIdx)
+        taskEndY.set(k, g.mainStart + drawnYs[i]);
+      secToY.clear();
+      for (let i = 0; i < events.length; i++) {
+        const e = events[i];
+        if (!secToY.has(e.sec)) secToY.set(e.sec, g.mainStart + drawnYs[i]);
+      }
     }
 
     const lastDrawn = drawnYs[drawnYs.length - 1];
@@ -583,9 +644,37 @@ export function TubeMap({
     // midpoint of the WHOLE row (illustration on one side ↔ station ↔
     // label on the other) — so a Next press brings the marker, the
     // instruction text, and the ingredient art all into view together.
+    // Illustration geometry — bigger now (the previous placeholder read as
+    // a tiny note) and explicitly placed OUTSIDE the track bundle so it
+    // never sits on top of a track. In journey mode the bundle is shared
+    // across recipes; in tracks mode each recipe has its own.
+    const illR = compact ? 17 : 22;
+    const illBuffer = 14; // gap between bundle edge and illustration edge
     const labelMaxW = Math.max(0, g.instrGutter - 26);
-    const illRadius = Math.min(14, (g.subLaneGap - 6) / 2);
-    const illOffset = illRadius + 12; // station-centre → illustration centre
+    const journeyBundle = isJourney && lanePositions.length > 0
+      ? {
+          left: lanePositions[0].subLaneX(0),
+          right:
+            lanePositions[lanePositions.length - 1].subLaneX(
+              lanePositions[lanePositions.length - 1].lane.subLaneCount - 1,
+            ),
+        }
+      : null;
+    const bundleBoundsFor = (recipeId: string) => {
+      if (journeyBundle) return journeyBundle;
+      const lp = lanePositions.find((p) => p.lane.recipeId === recipeId);
+      if (!lp) return { left: 0, right: 0 };
+      return {
+        left: lp.subLaneX(0),
+        right: lp.subLaneX(lp.lane.subLaneCount - 1),
+      };
+    };
+    const illXFor = (recipeId: string, onLeft: boolean) => {
+      const b = bundleBoundsFor(recipeId);
+      // Opposite side of label: label on left → illustration on the right
+      // of the bundle, and vice versa.
+      return onLeft ? b.right + illBuffer + illR : b.left - illBuffer - illR;
+    };
     const stationPos = new Map<
       string,
       { x: number; y: number; centerX: number }
@@ -598,10 +687,11 @@ export function TubeMap({
         const labelX = onLeft ? r.leftLabelX : r.rightLabelX;
         const labelFar = onLeft ? labelX - labelMaxW : labelX + labelMaxW;
         const hasIll = t.ingredients.length > 0;
+        const illCx = illXFor(r.recipeId, onLeft);
         const illFar = hasIll
           ? onLeft
-            ? sx + illOffset + illRadius
-            : sx - illOffset - illRadius
+            ? illCx + illR
+            : illCx - illR
           : sx;
         stationPos.set(`${r.recipeId}::${t.taskId}`, {
           x: sx,
@@ -625,6 +715,8 @@ export function TubeMap({
       endOf,
       stationPos,
       hops,
+      illR,
+      illXFor,
     };
   }, [schedule, lanes, startMs, nowMs, mode, focusTaskId, compact, containerW]);
 
@@ -999,14 +1091,14 @@ export function TubeMap({
                   // taller-than-expected label spill out cleanly.
                   const lblW = Math.max(0, g.instrGutter - 26);
                   const lblH = 84;
-                  // Ingredient illustration slot, opposite side of the
-                  // label. Surface-fill cuts through any track passing
-                  // behind it so it reads cleanly even in journey mode.
-                  // Dashed outline until we have ingredient art — then
-                  // swap the outline for an <image href={...}/> keyed by
-                  // ingredientIds (see RECIPES.md).
-                  const illR = Math.min(14, (g.subLaneGap - 6) / 2);
-                  const illCx = onLeft ? x + illR + 12 : x - illR - 12;
+                  // Ingredient illustration slot. Sits OUTSIDE the track
+                  // bundle on the opposite side of the label — never on
+                  // top of a track. No leader: visual context, not a
+                  // strict reference to the station. Dashed outline
+                  // until art arrives; swap to <image href={...}/>
+                  // keyed on ingredientIds (see RECIPES.md).
+                  const illR = view.illR;
+                  const illCx = view.illXFor(recipe.recipeId, onLeft);
                   const hasIll = task.ingredients.length > 0;
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
@@ -1038,25 +1130,18 @@ export function TubeMap({
                           strokeLinecap="butt"
                         />
                       )}
-                      {hasIll && illR > 6 && (
-                        <g className="tube__ill">
-                          <circle
-                            cx={illCx}
-                            cy={y}
-                            r={illR}
-                            fill="var(--color-surface)"
-                          />
-                          <circle
-                            cx={illCx}
-                            cy={y}
-                            r={illR - 0.5}
-                            fill="none"
-                            stroke="var(--color-text-muted)"
-                            strokeWidth={0.8}
-                            strokeDasharray="2 3"
-                            opacity={0.45}
-                          />
-                        </g>
+                      {hasIll && (
+                        <circle
+                          className="tube__ill"
+                          cx={illCx}
+                          cy={y}
+                          r={illR}
+                          fill="none"
+                          stroke="var(--color-text-muted)"
+                          strokeWidth={1}
+                          strokeDasharray="3 4"
+                          opacity={0.4}
+                        />
                       )}
                       <foreignObject
                         x={onLeft ? labelX - lblW : labelX}
@@ -1104,7 +1189,12 @@ export function TubeMap({
                 x2={axisRight}
                 y2={view.nowY}
               />
-              <text className="tube__now-label" x={10} y={view.nowY - 7}>
+              <text
+                className="tube__now-label"
+                x={10}
+                y={view.nowY}
+                dominantBaseline="middle"
+              >
                 now
               </text>
             </>
