@@ -122,6 +122,13 @@ in the same phase. The "Add the spaghetti to the water" task owns the
 spaghetti ingredient; "Cook the spaghetti" owns none (the spaghetti is
 already in).
 
+These links are also what will drive ingredient **illustrations** in
+the timeline — the slot opposite each station's label is reserved for
+an icon keyed on the task's first ingredient. Until the art library is
+in, the slot renders as a dashed placeholder; once we have art, the
+mapping is a `Map<ingredientId, imageUrl>` lookup, with a generic
+silhouette fallback for ingredients we haven't drawn yet.
+
 ## Naming
 
 Imperative, second person, concrete. **"Slice the cucumber"** not

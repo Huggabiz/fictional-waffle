@@ -580,10 +580,12 @@ export function TubeMap({
     }
 
     // stationPos drives auto-centring on focus changes. centerX is the
-    // midpoint of the station and its label's far edge — so a Next press
-    // brings the WHOLE row (marker + instruction text) into view, not
-    // just the station marker with the label half off-screen.
+    // midpoint of the WHOLE row (illustration on one side ↔ station ↔
+    // label on the other) — so a Next press brings the marker, the
+    // instruction text, and the ingredient art all into view together.
     const labelMaxW = Math.max(0, g.instrGutter - 26);
+    const illRadius = Math.min(14, (g.subLaneGap - 6) / 2);
+    const illOffset = illRadius + 12; // station-centre → illustration centre
     const stationPos = new Map<
       string,
       { x: number; y: number; centerX: number }
@@ -594,11 +596,17 @@ export function TubeMap({
         const onLeft =
           r.labelSide.get(`${r.recipeId}::${t.taskId}`) === 'left';
         const labelX = onLeft ? r.leftLabelX : r.rightLabelX;
-        const farEdge = onLeft ? labelX - labelMaxW : labelX + labelMaxW;
+        const labelFar = onLeft ? labelX - labelMaxW : labelX + labelMaxW;
+        const hasIll = t.ingredients.length > 0;
+        const illFar = hasIll
+          ? onLeft
+            ? sx + illOffset + illRadius
+            : sx - illOffset - illRadius
+          : sx;
         stationPos.set(`${r.recipeId}::${t.taskId}`, {
           x: sx,
           y: startOf(r.recipeId, t.taskId),
-          centerX: (sx + farEdge) / 2,
+          centerX: (illFar + labelFar) / 2,
         });
       }
     }
@@ -991,6 +999,15 @@ export function TubeMap({
                   // taller-than-expected label spill out cleanly.
                   const lblW = Math.max(0, g.instrGutter - 26);
                   const lblH = 84;
+                  // Ingredient illustration slot, opposite side of the
+                  // label. Surface-fill cuts through any track passing
+                  // behind it so it reads cleanly even in journey mode.
+                  // Dashed outline until we have ingredient art — then
+                  // swap the outline for an <image href={...}/> keyed by
+                  // ingredientIds (see RECIPES.md).
+                  const illR = Math.min(14, (g.subLaneGap - 6) / 2);
+                  const illCx = onLeft ? x + illR + 12 : x - illR - 12;
+                  const hasIll = task.ingredients.length > 0;
                   return (
                     <g key={`stn-${recipe.recipeId}:${task.taskId}`}>
                       <line
@@ -1020,6 +1037,26 @@ export function TubeMap({
                           strokeWidth={3.5}
                           strokeLinecap="butt"
                         />
+                      )}
+                      {hasIll && illR > 6 && (
+                        <g className="tube__ill">
+                          <circle
+                            cx={illCx}
+                            cy={y}
+                            r={illR}
+                            fill="var(--color-surface)"
+                          />
+                          <circle
+                            cx={illCx}
+                            cy={y}
+                            r={illR - 0.5}
+                            fill="none"
+                            stroke="var(--color-text-muted)"
+                            strokeWidth={0.8}
+                            strokeDasharray="2 3"
+                            opacity={0.45}
+                          />
+                        </g>
                       )}
                       <foreignObject
                         x={onLeft ? labelX - lblW : labelX}
