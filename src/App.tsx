@@ -35,7 +35,7 @@ export function App() {
       <header className="app__toolbar">
         <div className="app__brand">
           <img src="./waffle.svg" alt="" className="app__logo" />
-          <span className="app__title">Fictional Waffle</span>
+          <span className="app__title">NoWaffle</span>
         </div>
         {active === 'cook' && (
           <button

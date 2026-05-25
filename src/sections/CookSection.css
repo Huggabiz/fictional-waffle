@@ -59,8 +59,8 @@
   margin: 0;
   padding: var(--space-2) var(--space-5);
   font-size: 12px;
-  background: rgba(212, 68, 58, 0.12);
-  border-top: 1px solid rgba(212, 68, 58, 0.35);
+  background: rgba(181, 86, 63, 0.12);
+  border-top: 1px solid rgba(181, 86, 63, 0.35);
   color: var(--color-text);
 }
 
@@ -131,7 +131,7 @@
 }
 
 .cook__bar-timer-value--over {
-  color: #d4443a;
+  color: #b5563f;
 }
 
 .cook__bar-timer-label {

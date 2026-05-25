@@ -41,13 +41,15 @@ function trackStyle(
   return 'dormant';
 }
 
+// Muted, earthy line colours — Farrow & Ball palette feel. Terracotta and
+// dusty blue lead, since the common two-dish meal gets those two.
 export const LINE_COLORS = [
-  '#d8602f',
-  '#2f7fd8',
-  '#3fa64f',
-  '#b343a8',
-  '#c9a227',
-  '#1f9e9e',
+  '#c07e58', // terracotta
+  '#6d8da4', // dusty blue
+  '#8a9b63', // olive / sage
+  '#9c6f8a', // dusty plum
+  '#c2a25e', // soft ochre
+  '#5f9389', // eucalyptus teal
 ];
 
 export function lineColor(index: number): string {

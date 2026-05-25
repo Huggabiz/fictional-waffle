@@ -1,7 +1,7 @@
 {
   "name": "fictional-waffle",
   "private": true,
-  "version": "0.11.3",
+  "version": "0.12.0",
   "type": "module",
   "description": "Recipe app that paints recipes as left-to-right timelines.",
   "scripts": {
